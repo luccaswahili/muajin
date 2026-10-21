@@ -121,7 +121,7 @@ export function SaleForm({ products, customers, date }: { products: Product[]; c
           <select name="method" className="input" defaultValue="cash">
             <option value="cash">Cash (I am holding it)</option>
             <option value="mobile_money">Mobile money (to my phone)</option>
-            <option value="bank">Straight to Muajin bank account</option>
+            <option value="bank">Straight to Muwa Gin bank account</option>
           </select>
         </label>
       )}

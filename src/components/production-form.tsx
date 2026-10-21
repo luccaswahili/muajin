@@ -22,7 +22,7 @@ export function ProductionForm({
   const totalL = ethanolPct > 0 ? ethanolL / (ethanolPct / 100) : 0;
   const bottlesPossible = p ? Math.floor((totalL * 1000) / p.bottle_ml) : 0;
   const cartonsPossible = p ? Math.floor(bottlesPossible / p.bottles_per_carton) : 0;
-  const defaultFlavor = flavors.find((f) => p && f.name.toLowerCase().includes(p.name.toLowerCase().replace("muajin", "").trim().split(" ")[0] ?? ""));
+  const defaultFlavor = flavors.find((f) => p && f.name.toLowerCase().includes(p.name.toLowerCase().replace(/muwa|muajin/, "").trim().split(" ")[0] ?? ""));
 
   return (
     <ActionForm action={createProduction} className="space-y-4">

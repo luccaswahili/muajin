@@ -24,7 +24,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
     <div className="space-y-4">
       <PageHeader title="Customers" />
       <div className="grid grid-cols-2 gap-3">
-        <Stat label="Total owed to Muajin" value={tzs(owed)} tone={owed > 0 ? "warn" : "default"} />
+        <Stat label="Total owed to Muwa Gin" value={tzs(owed)} tone={owed > 0 ? "warn" : "default"} />
         <Stat label="Customers with debt" value={debtors} hint={`${rows.length} customers`} />
       </div>
       <form className="flex gap-2">

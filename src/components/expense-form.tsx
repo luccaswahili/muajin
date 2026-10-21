@@ -30,7 +30,7 @@ export function ExpenseForm({
         <label className="text-sm font-medium">Paid from
           <select name="paid_from" className="input mt-1">
             <option value="cash">Cash I&apos;m holding</option>
-            <option value="bank">Muajin bank account</option>
+            <option value="bank">Muwa Gin bank account</option>
           </select>
         </label>
         <label className="text-sm font-medium">Date<input type="date" name="date" defaultValue={date} className="input mt-1" /></label>

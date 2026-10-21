@@ -59,7 +59,7 @@ export default function LoginPage() {
     <div className="flex min-h-screen flex-col items-center justify-center bg-brand-700 px-4 py-10">
       <div className="mb-6 text-center text-white">
         <div className="mx-auto mb-3 grid h-16 w-16 place-items-center rounded-2xl bg-white/10 text-3xl font-bold text-accent">M</div>
-        <h1 className="text-3xl font-bold tracking-widest">MUAJIN</h1>
+        <h1 className="text-3xl font-bold tracking-widest">MUWA GIN</h1>
         <p className="text-sm text-brand-100">Company management</p>
       </div>
       <form onSubmit={submit} className="w-full max-w-sm space-y-3 rounded-2xl bg-white p-5 shadow-xl">

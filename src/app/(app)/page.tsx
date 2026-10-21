@@ -49,7 +49,7 @@ export default async function Dashboard() {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat tone="brand" label="Bank balance" value={tzs(f.bank_balance)} hint="Confirmed in the official account" href="/money" />
         <Stat label="Cash not banked" value={tzs(f.cash_in_hand)} hint={`${tzs(f.pending_deposits)} waiting confirmation`} href="/money" tone={Number(f.cash_in_hand) > 0 ? "warn" : "default"} />
-        <Stat label="Cartons in stock" value={totalCartons} hint={(stock.data ?? []).map((s) => `${s.name.replace("Muajin ", "")}: ${s.cartons}`).join(" · ")} href="/stock" />
+        <Stat label="Cartons in stock" value={totalCartons} hint={(stock.data ?? []).map((s) => `${s.name.replace(/^Muwa\s+/, "")}: ${s.cartons}`).join(" · ")} href="/stock" />
         <Stat label="Customers owe" value={tzs(f.receivables)} href="/customers" tone={Number(f.receivables) > 0 ? "warn" : "default"} />
         <Stat label="Sales today" value={tzs(todayTotal)} hint={`${todayCtn} cartons`} href="/sales" />
         <Stat label="Sales this month" value={tzs(monthTotal)} hint={`${monthCtn} cartons`} href="/reports" />

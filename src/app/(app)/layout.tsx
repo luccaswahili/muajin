@@ -33,7 +33,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
           <Link href="/" className="flex items-center gap-2 text-lg font-bold tracking-wide">
             <span className="grid h-8 w-8 place-items-center rounded-lg bg-white/10 text-accent">M</span>
-            MUAJIN
+            MUWA GIN
           </Link>
           <Link href="/more" className="rounded-full bg-white/10 px-3 py-1 text-sm">
             {me.full_name || me.email.split("@")[0]}

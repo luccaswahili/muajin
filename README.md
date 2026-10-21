@@ -1,6 +1,6 @@
-# Muajin
+# Muwa Gin
 
-Management system for Muajin gin: sales, customers and debts, production batches, expenses, bank and cash, stock, reports and owner shares.
+Management system for Muwa Gin: sales, customers and debts, production batches, expenses, bank and cash, stock, reports and owner shares.
 
 Built with Next.js (App Router) and Supabase. Mobile first.
 
@@ -11,7 +11,7 @@ npm install
 npm run dev
 ```
 
-The app connects to the Muajin Supabase project by default (see `.env.example`; the publishable key is public and data is protected by row level security).
+The app connects to the Muwa Gin Supabase (muajin) project by default (see `.env.example`; the publishable key is public and data is protected by row level security).
 
 ## Database
 

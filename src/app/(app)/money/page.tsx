@@ -42,7 +42,7 @@ export default async function MoneyPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Bank & cash" subtitle={String(bankName.data?.value ?? "Muajin official account")} />
+      <PageHeader title="Bank & cash" subtitle={String(bankName.data?.value ?? "Muwa Gin official account")} />
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat tone="brand" label="Bank balance" value={tzs(f.bank_balance)} />
         <Stat label="Cash not banked" value={tzs(f.cash_in_hand)} tone={Number(f.cash_in_hand) > 0 ? "warn" : "default"} />

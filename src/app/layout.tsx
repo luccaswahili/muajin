@@ -5,10 +5,10 @@ import "./globals.css";
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: { default: "Muajin", template: "%s · Muajin" },
-  description: "Muajin gin company management",
+  title: { default: "Muwa Gin", template: "%s · Muwa Gin" },
+  description: "Muwa Gin company management",
   manifest: "/manifest.webmanifest",
-  appleWebApp: { capable: true, title: "Muajin", statusBarStyle: "default" },
+  appleWebApp: { capable: true, title: "Muwa Gin", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {

@@ -44,7 +44,7 @@ export default async function MorePage() {
           <button className="btn-danger w-full">Sign out</button>
         </form>
       </Card>
-      <p className="text-center text-xs text-gray-400">Tip: on your phone, use &quot;Add to Home Screen&quot; to open Muajin like an app.</p>
+      <p className="text-center text-xs text-gray-400">Tip: on your phone, use &quot;Add to Home Screen&quot; to open Muwa Gin like an app.</p>
     </div>
   );
 }
