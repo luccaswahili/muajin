@@ -9,7 +9,7 @@ import { fmtDate, monthStart, num, today, tzs } from "@/lib/format";
 export const metadata = { title: "Expenses" };
 
 export default async function ExpensesPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string; cat?: string }> }) {
-  await requirePerm("expenses");
+  const me = await requirePerm("expenses");
   const sp = await searchParams;
   const from = sp.from || monthStart();
   const to = sp.to || today();
@@ -64,7 +64,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Pro
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">
                   <span className="font-semibold tabular-nums">{tzs(e.amount)}</span>
-                  <InlineAction action={deleteRecord} fields={{ table: "expenses", id: e.id }} label="Delete" className="text-xs text-red-600" confirm="Delete this expense? It is recorded in the activity log." />
+                  {(!e.material_id || me.is_admin) && <InlineAction action={deleteRecord} fields={{ table: "expenses", id: e.id }} label="Delete" className="text-xs text-red-600" confirm="Delete this expense? It is recorded in the activity log." />}
                 </div>
               </Row>
             ))}

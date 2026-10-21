@@ -9,7 +9,7 @@ import { expenseFormOptions } from "@/lib/options";
 import { fmtDate, fmtDateTime, num, today, tzs } from "@/lib/format";
 
 export default async function ProductionDetail({ params }: { params: Promise<{ id: string }> }) {
-  await requirePerm("production");
+  const me = await requirePerm("production");
   const { id } = await params;
   const supabase = await createClient();
   const { data: p } = await supabase.from("v_production_costs").select("*").eq("id", id).maybeSingle();
@@ -70,13 +70,13 @@ export default async function ProductionDetail({ params }: { params: Promise<{ i
       {p.notes && <Card title="Note"><p className="text-sm">{p.notes}</p></Card>}
       <div className="flex items-center justify-between text-xs text-gray-500">
         <span>Recorded {fmtDateTime(p.created_at)}</span>
-        <InlineAction
+        {me.is_admin && <InlineAction
           action={deleteRecord}
           fields={{ table: "productions", id: p.id, redirect: "/production" }}
           label="Delete batch"
           className="btn-danger"
           confirm="Delete this batch? The cartons, used and damaged materials are all put back. Linked expenses are kept."
-        />
+        />}
       </div>
     </div>
   );

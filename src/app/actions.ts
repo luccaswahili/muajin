@@ -107,8 +107,6 @@ export async function createProduction(_: ActionState, fd: FormData): Promise<Ac
     p_date: str(fd, "date"),
     p_notes: str(fd, "notes"),
     p_damaged: damaged,
-    p_labour_cost: numOr(fd, "labour_cost", 0),
-    p_labour_paid_from: str(fd, "labour_paid_from") || "cash",
   });
   if (error) return fail(error);
   revalidatePath("/", "layout");

@@ -75,10 +75,6 @@ export function ProductionForm({
           {d > 0 && <div>{num(c / d, 1)} cartons per drum (expected {expectedPerDrum})</div>}
         </div>
         <div className="grid grid-cols-2 gap-2">
-          <label className="text-sm font-medium">Workers paid (TZS)<input name="labour_cost" inputMode="numeric" className="input mt-1" placeholder="0" /></label>
-          <label className="text-sm font-medium">Paid from
-            <select name="labour_paid_from" className="input mt-1"><option value="cash">Cash</option><option value="bank">Bank</option></select>
-          </label>
           <label className="text-sm">Date<input type="date" name="date" defaultValue={date} className="input mt-1" /></label>
           <label className="text-sm">Note<input name="notes" className="input mt-1" placeholder="Optional" /></label>
         </div>

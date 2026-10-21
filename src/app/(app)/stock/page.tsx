@@ -77,13 +77,13 @@ export default async function StockPage() {
                   <select name="reason" className="input">
                     <option value="opening">Opening stock (+)</option>
                     <option value="adjustment">Count correction</option>
-                    <option value="sample">Free sample (−)</option>
-                    <option value="breakage">Broken / lost (−)</option>
+                    {me.is_admin && <option value="sample">Free sample (−)</option>}
+                    {me.is_admin && <option value="breakage">Broken / lost (−)</option>}
                     <option value="return">Customer return (+)</option>
                   </select>
                 </Field>
                 <Field label="Add or remove">
-                  <select name="direction" className="input"><option value="in">Add</option><option value="out">Remove</option></select>
+                  <select name="direction" className="input"><option value="in">Add</option>{me.is_admin && <option value="out">Remove</option>}</select>
                 </Field>
                 <Field label="Cartons"><input name="cartons" inputMode="numeric" className="input" placeholder="0" /></Field>
                 <Field label="Bottles"><input name="bottles" inputMode="numeric" className="input" placeholder="0" /></Field>
@@ -105,11 +105,11 @@ export default async function StockPage() {
                   <select name="reason" className="input">
                     <option value="opening">Opening</option>
                     <option value="adjustment">Correction</option>
-                    <option value="damage">Damaged (−)</option>
+                    {me.is_admin && <option value="damage">Damaged (−)</option>}
                   </select>
                 </Field>
                 <Field label="Add/remove">
-                  <select name="direction" className="input"><option value="in">Add</option><option value="out">Remove</option></select>
+                  <select name="direction" className="input"><option value="in">Add</option>{me.is_admin && <option value="out">Remove</option>}</select>
                 </Field>
                 <Field label="Quantity"><input name="qty" inputMode="decimal" className="input" required /></Field>
               </div>
@@ -159,7 +159,7 @@ export default async function StockPage() {
                     <span className={`tabular-nums ${m.bottles < 0 ? "text-red-600" : "text-emerald-700"}`}>
                       {m.bottles < 0 ? "−" : "+"}{Math.floor(abs / per) ? `${Math.floor(abs / per)} ctn ` : ""}{abs % per ? `${abs % per} btl` : ""}
                     </span>
-                    {editable && <InlineAction action={deleteRecord} fields={{ table: "product_movements", id: m.id }} label="×" className="text-red-600" confirm="Undo this correction?" />}
+                    {me.is_admin && <InlineAction action={deleteRecord} fields={{ table: "product_movements", id: m.id }} label="×" className="text-red-600" confirm="Undo this correction?" />}
                   </div>
                 </Row>
               );
