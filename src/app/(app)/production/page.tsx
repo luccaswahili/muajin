@@ -10,7 +10,7 @@ export default async function ProductionPage() {
   await requirePerm("production");
   const supabase = await createClient();
   const [{ data }, { data: settings }] = await Promise.all([
-    supabase.from("v_production_costs").select("*").order("date", { ascending: false }).order("created_at", { ascending: false }).limit(100),
+    supabase.from("v_production_costs").select("*").order("batch_no", { ascending: false }).limit(100),
     supabase.from("settings").select("key, value").eq("key", "expected_cartons_per_drum").maybeSingle(),
   ]);
   const rows = data ?? [];
@@ -32,7 +32,7 @@ export default async function ProductionPage() {
             {rows.map((p) => (
               <Row key={p.id} href={`/production/${p.id}`}>
                 <div>
-                  <div className="font-medium">{p.cartons_produced} cartons{p.loose_bottles ? ` + ${p.loose_bottles} btl` : ""} · {p.product_name}</div>
+                  <div className="font-medium">Batch #{p.batch_no} · {p.cartons_produced} cartons{p.loose_bottles ? ` + ${p.loose_bottles} btl` : ""} · {p.product_name}</div>
                   <div className="text-xs text-gray-500">
                     {fmtDate(p.date)} · {num(p.drums_used, 2)} drum{Number(p.drums_used) === 1 ? "" : "s"}
                     {p.cartons_per_drum && ` · ${num(p.cartons_per_drum, 1)} per drum`}

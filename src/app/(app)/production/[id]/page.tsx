@@ -15,7 +15,7 @@ export default async function ProductionDetail({ params }: { params: Promise<{ i
   const { data: p } = await supabase.from("v_production_costs").select("*").eq("id", id).maybeSingle();
   if (!p) notFound();
   const [{ data: mats }, { data: exps }, opts] = await Promise.all([
-    supabase.from("material_movements").select("qty, unit_cost, material:materials(name, unit)").eq("production_id", id),
+    supabase.from("material_movements").select("qty, unit_cost, reason, notes, material:materials(name, unit)").eq("production_id", id).order("reason", { ascending: false }),
     supabase.from("v_expenses").select("*").eq("production_id", id).order("date"),
     expenseFormOptions(),
   ]);
@@ -26,7 +26,7 @@ export default async function ProductionDetail({ params }: { params: Promise<{ i
   return (
     <div className="mx-auto max-w-2xl space-y-4">
       <PageHeader
-        title={`${p.cartons_produced} cartons${p.loose_bottles ? ` + ${p.loose_bottles} btl` : ""}`}
+        title={`Batch #${p.batch_no} · ${p.cartons_produced} cartons${p.loose_bottles ? ` + ${p.loose_bottles} btl` : ""}`}
         subtitle={`${p.product_name} · ${fmtDate(p.date)} · by ${p.created_by_name}`}
       />
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -41,7 +41,11 @@ export default async function ProductionDetail({ params }: { params: Promise<{ i
             const mat = Array.isArray(m.material) ? m.material[0] : m.material;
             return (
               <Row key={i}>
-                <span className="text-sm">{mat?.name} · {num(-m.qty, 2)} {mat?.unit}</span>
+                <span className="text-sm">
+                  {mat?.name} · {num(-m.qty, 2)} {mat?.unit}
+                  {m.reason === "damage" && <span className="ml-1 rounded bg-red-100 px-1.5 text-xs text-red-700">damaged</span>}
+                  <span className="block text-xs text-gray-500">{m.notes}</span>
+                </span>
                 <span className="text-sm tabular-nums">{Number(m.unit_cost) ? tzs(-m.qty * m.unit_cost) : <span className="text-gray-400">no cost set</span>}</span>
               </Row>
             );
@@ -71,7 +75,7 @@ export default async function ProductionDetail({ params }: { params: Promise<{ i
           fields={{ table: "productions", id: p.id, redirect: "/production" }}
           label="Delete batch"
           className="btn-danger"
-          confirm="Delete this batch? The cartons and used materials are reversed. Linked expenses are kept."
+          confirm="Delete this batch? The cartons, used and damaged materials are all put back. Linked expenses are kept."
         />
       </div>
     </div>

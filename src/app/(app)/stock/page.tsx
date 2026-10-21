@@ -12,13 +12,18 @@ const PRODUCT_REASON: Record<string, string> = {
   sample: "Free sample", breakage: "Broken / lost", return: "Customer return",
 };
 
+const MATERIAL_REASON: Record<string, string> = {
+  purchase: "Bought (expense)", production: "Used in production", opening: "Opening stock", adjustment: "Count correction", damage: "Damaged",
+};
+
 export default async function StockPage() {
   const me = await requireMember();
   const supabase = await createClient();
-  const [{ data: products }, { data: materials }, { data: moves }] = await Promise.all([
+  const [{ data: products }, { data: materials }, { data: moves }, { data: matMoves }] = await Promise.all([
     supabase.from("v_product_stock").select("*").eq("is_active", true).order("sort"),
     supabase.from("v_material_stock").select("*").eq("is_active", true).order("sort"),
     supabase.from("product_movements").select("*, product:products(name, bottles_per_carton)").not("reason", "in", "(sale,production)").order("created_at", { ascending: false }).limit(15),
+    supabase.from("material_movements").select("id, date, qty, reason, notes, production_id, material:materials(name, unit)").order("created_at", { ascending: false }).limit(40),
   ]);
   const editable = can(me, "stock");
   const stockValue = (materials ?? []).reduce((a, m) => a + Math.max(0, Number(m.qty)) * Number(m.unit_cost), 0);
@@ -114,6 +119,27 @@ export default async function StockPage() {
             </ActionForm>
           </Card>
         </div>
+      )}
+
+      {!!matMoves?.length && (
+        <Card title="Materials history">
+          <List>
+            {matMoves.map((m) => {
+              const mat = Array.isArray(m.material) ? m.material[0] : m.material;
+              return (
+                <Row key={m.id} href={m.production_id ? `/production/${m.production_id}` : undefined}>
+                  <div className="min-w-0">
+                    <div className="text-sm">{mat?.name}</div>
+                    <div className="text-xs text-gray-500">{fmtDate(m.date)} · {m.notes || MATERIAL_REASON[m.reason]}</div>
+                  </div>
+                  <span className={`shrink-0 tabular-nums ${Number(m.qty) < 0 ? "text-red-600" : "text-emerald-700"}`}>
+                    {Number(m.qty) > 0 ? "+" : "−"}{num(Math.abs(Number(m.qty)), 2)} {mat?.unit}
+                  </span>
+                </Row>
+              );
+            })}
+          </List>
+        </Card>
       )}
 
       {!!moves?.length && (

@@ -142,14 +142,17 @@ async function Products() {
 
 async function Materials() {
   const supabase = await createClient();
-  const { data } = await supabase.from("materials").select("*").order("sort");
+  const [{ data }, { data: products }] = await Promise.all([
+    supabase.from("materials").select("*").order("sort"),
+    supabase.from("products").select("id, name").order("sort"),
+  ]);
   return (
     <Card title="Materials (raw items)">
-      <p className="mb-3 text-xs text-gray-500">Ethanol is taken by drums × litres per drum. Flavor follows the flavor % setting. Other items use the &quot;per bottle&quot; and &quot;per carton&quot; amounts at every production.</p>
+      <p className="mb-3 text-xs text-gray-500">Every production batch takes these items out of stock automatically, using &quot;Used in production&quot;. Example: bottles, caps, labels and TRA stamps: 1 per bottle. Boxes: 1 per carton. Ethanol: 1 per drum (if the unit is drum). Flavor: 0.1 litre per drum, only for its product.</p>
       <div className="space-y-3">
-        {(data ?? []).map((m) => <MatForm key={m.id} m={m} />)}
+        {(data ?? []).map((m) => <MatForm key={m.id} m={m} products={products ?? []} />)}
         <p className="pt-2 text-sm font-medium">New item</p>
-        <MatForm />
+        <MatForm products={products ?? []} />
       </div>
     </Card>
   );
@@ -220,7 +223,7 @@ async function Settings() {
   return (
     <Card title="Business settings">
       <ActionForm action={saveSettings} reset={false}>
-        {(data ?? []).filter((s) => s.key !== "currency").map((s) => (
+        {(data ?? []).filter((s) => s.key !== "currency" && s.label !== "Not used anymore").map((s) => (
           <Field key={s.key} label={s.label || s.key}>
             {s.key === "ethanol_material_id" ? (
               <select name={`s_${s.key}`} defaultValue={String(s.value)} className="input">
@@ -280,7 +283,7 @@ function ProductForm({ p }: { p?: { [k: string]: unknown } }) {
   );
 }
 
-function MatForm({ m }: { m?: { [k: string]: unknown } }) {
+function MatForm({ m, products }: { m?: { [k: string]: unknown }; products: { id: string; name: string }[] }) {
   return (
   <ActionForm action={saveMaterial} reset={!m} className="space-y-2 rounded-xl border border-gray-200 p-3">
     {m && <input type="hidden" name="id" value={String(m.id)} />}
@@ -289,8 +292,25 @@ function MatForm({ m }: { m?: { [k: string]: unknown } }) {
       <Field label="Unit"><input name="unit" defaultValue={(m?.unit as string) ?? "pcs"} className="input" placeholder="pcs, litre, kg" /></Field>
       <Field label="Cost per unit (TZS)"><input name="unit_cost" inputMode="decimal" defaultValue={m ? Number(m.unit_cost) : 0} className="input" /></Field>
       <Field label="Warn when below"><input name="low_stock_level" inputMode="decimal" defaultValue={m ? Number(m.low_stock_level) : 0} className="input" /></Field>
-      <Field label="Used per bottle" hint="e.g. 1 cap"><input name="per_bottle" inputMode="decimal" defaultValue={m ? Number(m.per_bottle) : 0} className="input" /></Field>
-      <Field label="Used per carton" hint="e.g. 1 box"><input name="per_carton" inputMode="decimal" defaultValue={m ? Number(m.per_carton) : 0} className="input" /></Field>
+    </div>
+    <div className="grid grid-cols-2 gap-2 rounded-lg bg-gray-50 p-2 sm:grid-cols-3">
+      <Field label="Used in production">
+        <select name="usage" defaultValue={(m?.usage as string) ?? "none"} className="input">
+          <option value="none">Not automatically</option>
+          <option value="per_bottle">Per bottle made</option>
+          <option value="per_carton">Per carton made</option>
+          <option value="per_drum">Per ethanol drum used</option>
+        </select>
+      </Field>
+      <Field label={`Amount used (${(m?.unit as string) ?? "unit"})`} hint="e.g. 1 cap per bottle, 0.1 litre flavor per drum">
+        <input name="usage_qty" inputMode="decimal" defaultValue={m ? Number(m.usage_qty) : 0} className="input" />
+      </Field>
+      <Field label="Only for product">
+        <select name="product_id" defaultValue={(m?.product_id as string) ?? ""} className="input">
+          <option value="">All products</option>
+          {products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+      </Field>
     </div>
     <div className="flex items-center justify-between">
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="is_active" defaultChecked={m ? !!m.is_active : true} /> Active</label>

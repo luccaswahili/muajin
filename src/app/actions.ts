@@ -93,6 +93,12 @@ export async function saveCustomer(_: ActionState, fd: FormData): Promise<Action
 
 // ---------------------------------------------------------------- production
 export async function createProduction(_: ActionState, fd: FormData): Promise<ActionState> {
+  let damaged: unknown = [];
+  try {
+    damaged = JSON.parse(str(fd, "damaged") || "[]");
+  } catch {
+    return { error: "Could not read the damaged items" };
+  }
   const { data, error } = await rpc("record_production", {
     p_product_id: str(fd, "product_id"),
     p_drums: numOr(fd, "drums", 0),
@@ -100,8 +106,7 @@ export async function createProduction(_: ActionState, fd: FormData): Promise<Ac
     p_loose_bottles: numOr(fd, "loose_bottles", 0),
     p_date: str(fd, "date"),
     p_notes: str(fd, "notes"),
-    p_use_materials: bool(fd, "use_materials"),
-    p_flavor_material_id: optStr(fd, "flavor_material_id"),
+    p_damaged: damaged,
     p_labour_cost: numOr(fd, "labour_cost", 0),
     p_labour_paid_from: str(fd, "labour_paid_from") || "cash",
   });
@@ -236,8 +241,9 @@ export async function saveMaterial(_: ActionState, fd: FormData): Promise<Action
     unit: str(fd, "unit") || "pcs",
     unit_cost: numOr(fd, "unit_cost", 0),
     low_stock_level: numOr(fd, "low_stock_level", 0),
-    per_bottle: numOr(fd, "per_bottle", 0),
-    per_carton: numOr(fd, "per_carton", 0),
+    usage: str(fd, "usage") || "none",
+    usage_qty: numOr(fd, "usage_qty", 0),
+    product_id: optStr(fd, "product_id"),
     is_active: bool(fd, "is_active"),
   };
   if (!row.name) return { error: "Name is required" };
