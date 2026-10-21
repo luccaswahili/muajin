@@ -3,6 +3,7 @@ import { can, requireMember } from "@/lib/auth";
 import { Card, Field } from "@/components/ui";
 import { ActionForm, SubmitButton } from "@/components/forms";
 import { signOut, updateMyName } from "@/app/actions";
+import { displayLogin } from "@/lib/format";
 import { PasswordForm } from "@/components/password-form";
 
 export const metadata = { title: "More" };
@@ -33,7 +34,7 @@ export default async function MorePage() {
         </div>
       </Card>
       <Card title="My account">
-        <p className="mb-3 text-sm text-gray-600">{me.email} · {me.role_name}</p>
+        <p className="mb-3 text-sm text-gray-600">{displayLogin(me.email)} · {me.role_name}</p>
         <ActionForm action={updateMyName} reset={false}>
           <Field label="My name"><input name="full_name" defaultValue={me.full_name} className="input" /></Field>
           <SubmitButton className="btn-secondary w-full">Save name</SubmitButton>

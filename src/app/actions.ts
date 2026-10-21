@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { PERMS } from "@/lib/auth";
+import { displayLogin, loginToEmail } from "@/lib/format";
 
 export type ActionState = { ok?: boolean; error?: string; message?: string } | null;
 
@@ -289,8 +290,8 @@ export async function updateMember(_: ActionState, fd: FormData): Promise<Action
 
 export async function createInvite(_: ActionState, fd: FormData): Promise<ActionState> {
   const supabase = await createClient();
-  const email = str(fd, "email").toLowerCase();
-  if (!email.includes("@")) return { error: "Enter a valid email" };
+  if (!str(fd, "email")) return { error: "Enter an email or a username" };
+  const email = loginToEmail(str(fd, "email"));
   const role_id = str(fd, "role_id");
   // If the person already signed up, activate them directly.
   const { data: existing } = await supabase.from("profiles").select("id").eq("email", email).maybeSingle();
@@ -299,12 +300,12 @@ export async function createInvite(_: ActionState, fd: FormData): Promise<Action
       .from("profiles")
       .update({ role_id, is_active: true, full_name: str(fd, "full_name") || undefined })
       .eq("id", existing.id);
-    return error ? fail(error) : done(`${email} already had an account and is now active`);
+    return error ? fail(error) : done(`${displayLogin(email)} already had an account and is now active`);
   }
   const { error } = await supabase
     .from("invites")
     .upsert({ email, full_name: str(fd, "full_name"), role_id, accepted_at: null });
-  return error ? fail(error) : done(`Invited ${email}. They can now sign up with this email.`);
+  return error ? fail(error) : done(`Invited ${displayLogin(email)}. They can now tap "Create account" and sign up with it.`);
 }
 
 export async function saveOwner(_: ActionState, fd: FormData): Promise<ActionState> {

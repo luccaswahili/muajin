@@ -6,7 +6,7 @@ import { ActionForm, InlineAction, SubmitButton } from "@/components/forms";
 import {
   createInvite, deleteRecord, saveCategory, saveMaterial, saveOwner, saveProduct, saveRole, saveSettings, updateMember,
 } from "@/app/actions";
-import { fmtDate } from "@/lib/format";
+import { displayLogin, fmtDate } from "@/lib/format";
 
 export const metadata = { title: "Admin" };
 
@@ -60,7 +60,7 @@ async function Members({ roles, meId }: { roles: Role[]; meId: string }) {
       <Card title="Invite a new member">
         <ActionForm action={createInvite}>
           <div className="grid gap-2 sm:grid-cols-3">
-            <Field label="Email"><input name="email" type="email" className="input" required /></Field>
+            <Field label="Email or username"><input name="email" className="input" autoCapitalize="none" required /></Field>
             <Field label="Name"><input name="full_name" className="input" placeholder="e.g. Sergio" /></Field>
             <Field label="Role">
               <select name="role_id" className="input" defaultValue={roles.find((r) => r.name === "Owner")?.id}>
@@ -69,14 +69,14 @@ async function Members({ roles, meId }: { roles: Role[]; meId: string }) {
             </Field>
           </div>
           <SubmitButton>Invite</SubmitButton>
-          <p className="text-xs text-gray-500">Then send them the app link. They tap &quot;Create account&quot; and use this same email.</p>
+          <p className="text-xs text-gray-500">Then send them the app link. They tap &quot;Create account&quot; and use this same email or username.</p>
         </ActionForm>
       </Card>
       {!!invites?.length && (
         <Card title="Invited, not signed up yet">
           {invites.map((i) => (
             <div key={i.email} className="flex items-center justify-between border-b border-gray-100 py-2 last:border-0">
-              <div className="text-sm">{i.full_name || i.email}<div className="text-xs text-gray-500">{i.email} · {(Array.isArray(i.role) ? i.role[0] : i.role)?.name}</div></div>
+              <div className="text-sm">{i.full_name || i.email}<div className="text-xs text-gray-500">{displayLogin(i.email)} · {(Array.isArray(i.role) ? i.role[0] : i.role)?.name}</div></div>
               <InlineAction action={deleteRecord} fields={{ table: "invites", id: i.email }} label="Cancel" className="text-xs text-red-600" />
             </div>
           ))}
@@ -88,7 +88,7 @@ async function Members({ roles, meId }: { roles: Role[]; meId: string }) {
             <ActionForm key={m.id} action={updateMember} reset={false} className="space-y-2 rounded-xl border border-gray-200 p-3">
               <input type="hidden" name="id" value={m.id} />
               <div className="flex items-center justify-between text-xs text-gray-500">
-                <span>{m.email} · joined {fmtDate(m.created_at)}</span>
+                <span>{displayLogin(m.email)} · joined {fmtDate(m.created_at)}</span>
                 {!m.is_active && <Badge tone="amber">no access</Badge>}
               </div>
               <div className="grid grid-cols-2 gap-2">

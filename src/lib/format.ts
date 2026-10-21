@@ -49,3 +49,15 @@ export function qty(cartons: number, bottles: number) {
 }
 
 export const METHOD_LABEL: Record<string, string> = { cash: "Cash", mobile_money: "Mobile money", bank: "Bank" };
+
+/** Members without an email sign in with a username, stored as <username>@muajin.app. */
+export const USERNAME_DOMAIN = "muajin.app";
+
+export function loginToEmail(login: string) {
+  const v = login.trim().toLowerCase();
+  return v.includes("@") ? v : `${v.replace(/\s+/g, "")}@${USERNAME_DOMAIN}`;
+}
+
+export function displayLogin(email: string) {
+  return email.endsWith(`@${USERNAME_DOMAIN}`) ? email.slice(0, -USERNAME_DOMAIN.length - 1) : email;
+}

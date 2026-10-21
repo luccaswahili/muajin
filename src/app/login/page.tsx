@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { loginToEmail } from "@/lib/format";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -22,13 +23,13 @@ export default function LoginPage() {
     const supabase = createClient();
     try {
       if (mode === "signin") {
-        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+        const { error } = await supabase.auth.signInWithPassword({ email: loginToEmail(email), password });
         if (error) throw error;
         router.replace("/");
         router.refresh();
       } else if (mode === "signup") {
         const { data, error } = await supabase.auth.signUp({
-          email: email.trim(),
+          email: loginToEmail(email),
           password,
           options: { data: { full_name: name.trim() }, emailRedirectTo: `${window.location.origin}/auth/callback` },
         });
@@ -41,7 +42,7 @@ export default function LoginPage() {
           setMode("signin");
         }
       } else {
-        const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+        const { error } = await supabase.auth.resetPasswordForEmail(loginToEmail(email), {
           redirectTo: `${window.location.origin}/auth/callback?next=/more`,
         });
         if (error) throw error;
@@ -68,7 +69,7 @@ export default function LoginPage() {
         {mode === "signup" && (
           <input className="input" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} required />
         )}
-        <input className="input" type="email" placeholder="Email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        <input className="input" type={mode === "reset" ? "email" : "text"} placeholder={mode === "reset" ? "Email" : "Email or username"} autoComplete="username" autoCapitalize="none" value={email} onChange={(e) => setEmail(e.target.value)} required />
         {mode !== "reset" && (
           <input
             className="input"
