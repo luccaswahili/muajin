@@ -157,6 +157,19 @@ export async function createTransfer(_: ActionState, fd: FormData): Promise<Acti
   return error ? fail(error) : done("Cash handover recorded");
 }
 
+export async function recordCashAdjustment(_: ActionState, fd: FormData): Promise<ActionState> {
+  const sign = str(fd, "direction") === "subtract" ? -1 : 1;
+  const amount = numOr(fd, "amount", 0) ?? 0;
+  if (amount <= 0) return { error: "Enter an amount" };
+  const { error } = await rpc("record_cash_adjustment", {
+    p_profile_id: str(fd, "profile_id"),
+    p_amount: sign * amount,
+    p_notes: str(fd, "notes"),
+    p_date: str(fd, "date"),
+  });
+  return error ? fail(error) : done(sign > 0 ? "Cash added" : "Cash subtracted");
+}
+
 // ---------------------------------------------------------------- stock
 export async function adjustProductStock(_: ActionState, fd: FormData): Promise<ActionState> {
   const ctn = numOr(fd, "cartons", 0) ?? 0;
@@ -194,7 +207,7 @@ export async function adjustMaterialStock(_: ActionState, fd: FormData): Promise
 // ---------------------------------------------------------------- delete (logged in the activity log)
 const DELETABLE = new Set([
   "sales", "payments", "productions", "expenses", "deposits", "cash_transfers", "owner_withdrawals",
-  "customers", "product_movements", "material_movements", "invites",
+  "customers", "product_movements", "material_movements", "invites", "cash_adjustments",
 ]);
 
 export async function deleteRecord(_: ActionState, fd: FormData): Promise<ActionState> {

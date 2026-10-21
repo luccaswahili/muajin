@@ -2,7 +2,7 @@ import { requirePerm } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Badge, Card, Empty, Field, List, PageHeader, Row, Stat } from "@/components/ui";
 import { ActionForm, InlineAction, SubmitButton } from "@/components/forms";
-import { createDeposit, createTransfer, deleteRecord, reviewDeposit } from "@/app/actions";
+import { createDeposit, createTransfer, deleteRecord, recordCashAdjustment, reviewDeposit } from "@/app/actions";
 import { fmtDate, today, tzs } from "@/lib/format";
 
 export const metadata = { title: "Bank & cash" };
@@ -12,7 +12,7 @@ type Entry = { date: string; label: string; amount: number; key: string };
 export default async function MoneyPage() {
   const me = await requirePerm("bank");
   const supabase = await createClient();
-  const [fin, holders, deposits, bankPayments, bankExpenses, withdrawals, members, bankName] = await Promise.all([
+  const [fin, holders, deposits, bankPayments, bankExpenses, withdrawals, members, bankName, adjustments] = await Promise.all([
     supabase.from("v_finance_summary").select("*").single(),
     supabase.from("v_cash_holders").select("*").order("cash_in_hand", { ascending: false }),
     supabase.from("v_deposits").select("*").order("date", { ascending: false }).order("created_at", { ascending: false }).limit(50),
@@ -21,6 +21,7 @@ export default async function MoneyPage() {
     supabase.from("owner_withdrawals").select("id, date, amount, paid_from, owner:owners(name)").order("date", { ascending: false }).limit(50),
     supabase.from("profiles").select("id, full_name, email").eq("is_active", true).order("full_name"),
     supabase.from("settings").select("value").eq("key", "bank_name").maybeSingle(),
+    supabase.from("cash_adjustments").select("*, member:profiles!cash_adjustments_profile_id_fkey(full_name, email)").order("created_at", { ascending: false }).limit(20),
   ]);
   const f = fin.data ?? { bank_balance: 0, cash_in_hand: 0, pending_deposits: 0, receivables: 0 };
   const pending = (deposits.data ?? []).filter((d) => d.status === "pending");
@@ -107,6 +108,43 @@ export default async function MoneyPage() {
           </ActionForm>
         </Card>
       </div>
+
+      {me.is_admin && (
+        <Card title="Adjust cash not banked (admin only)">
+          <ActionForm action={recordCashAdjustment}>
+            <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+              <Field label="Whose cash">
+                <select name="profile_id" className="input" defaultValue={me.id}>
+                  {(members.data ?? []).map((m) => <option key={m.id} value={m.id}>{m.full_name || m.email}</option>)}
+                </select>
+              </Field>
+              <Field label="Add or subtract">
+                <select name="direction" className="input"><option value="add">Add (+)</option><option value="subtract">Subtract (−)</option></select>
+              </Field>
+              <Field label="Amount (TZS)"><input name="amount" inputMode="numeric" className="input" required /></Field>
+              <Field label="Date"><input type="date" name="date" defaultValue={today()} className="input" /></Field>
+            </div>
+            <Field label="Reason"><input name="notes" className="input" placeholder="e.g. Opening cash, counting correction" required /></Field>
+            <SubmitButton className="btn-secondary w-full">Save adjustment</SubmitButton>
+          </ActionForm>
+          {!!adjustments.data?.length && (
+            <div className="mt-3 border-t pt-2">
+              {adjustments.data.map((a) => (
+                <div key={a.id} className="flex items-center justify-between gap-2 py-1.5 text-sm">
+                  <div className="min-w-0">
+                    <div className="truncate">{a.member?.full_name || a.member?.email} · {a.notes}</div>
+                    <div className="text-xs text-gray-500">{fmtDate(a.date)}</div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className={`tabular-nums ${Number(a.amount) < 0 ? "text-red-600" : "text-emerald-700"}`}>{tzs(a.amount, { sign: true })}</span>
+                    <InlineAction action={deleteRecord} fields={{ table: "cash_adjustments", id: a.id }} label="×" className="text-red-600" confirm="Undo this adjustment?" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
 
       <Card title="Hand cash to another member">
         <ActionForm action={createTransfer}>

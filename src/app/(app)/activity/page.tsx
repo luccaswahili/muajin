@@ -9,7 +9,7 @@ const TABLE_LABEL: Record<string, string> = {
   sales: "sale", payments: "payment", productions: "production", expenses: "expense", deposits: "bank deposit",
   customers: "customer", products: "product", materials: "material", expense_categories: "expense category",
   settings: "setting", roles: "role", profiles: "member", invites: "invite", owners: "owner",
-  owner_withdrawals: "owner withdrawal", cash_transfers: "cash handover",
+  owner_withdrawals: "owner withdrawal", cash_transfers: "cash handover", cash_adjustments: "cash adjustment",
 };
 
 function describe(a: { table_name: string; action: string; old_data: Record<string, unknown> | null; new_data: Record<string, unknown> | null }) {
