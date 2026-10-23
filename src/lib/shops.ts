@@ -6,7 +6,7 @@ export const REGIONS = [
 ];
 
 export const SHOP_TYPES: Record<string, string> = {
-  magi_shop: "Magi shop",
+  magi_shop: "Mangi shop",
   bar: "Bar",
   wholesaler: "Wholesaler",
   shop: "Shop / kiosk",
