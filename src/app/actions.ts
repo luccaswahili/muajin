@@ -83,12 +83,28 @@ export async function recordCustomerPayment(_: ActionState, fd: FormData): Promi
 export async function saveCustomer(_: ActionState, fd: FormData): Promise<ActionState> {
   const supabase = await createClient();
   const id = str(fd, "id");
-  const row = { name: str(fd, "name"), phone: str(fd, "phone"), location: str(fd, "location"), notes: str(fd, "notes") };
+  const row: Record<string, unknown> = {
+    name: str(fd, "name"),
+    phone: str(fd, "phone"),
+    location: str(fd, "location"),
+    notes: str(fd, "notes"),
+  };
   if (!row.name) return { error: "Name is required" };
+  // Shop fields are only sent by forms that show them
+  for (const k of ["shop_type", "status", "contact_name", "region", "area"]) {
+    if (fd.has(k)) row[k] = str(fd, k);
+  }
+  if (fd.has("lat")) {
+    const lat = numOr(fd, "lat");
+    const lng = numOr(fd, "lng");
+    if ((lat === null) !== (lng === null)) return { error: "Location is incomplete" };
+    row.lat = lat;
+    row.lng = lng;
+  }
   const { error } = id
     ? await supabase.from("customers").update(row).eq("id", id)
     : await supabase.from("customers").insert(row);
-  return error ? fail(error) : done(id ? "Customer updated" : "Customer added");
+  return error ? fail(error) : done(id ? "Saved" : `${row.name} registered`);
 }
 
 // ---------------------------------------------------------------- production

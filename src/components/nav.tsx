@@ -10,6 +10,7 @@ const ICONS: Record<string, string> = {
   expenses: "M12 3v18M17 7H9.5a3 3 0 0 0 0 6h5a3 3 0 0 1 0 6H6",
   money: "M3 10 12 4l9 6M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 21h18",
   more: "M4 6h16M4 12h16M4 18h16",
+  map: "M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14",
 };
 
 export function Icon({ name, className = "h-6 w-6" }: { name: string; className?: string }) {

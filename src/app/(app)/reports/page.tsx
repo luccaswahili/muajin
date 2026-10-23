@@ -10,13 +10,14 @@ export const metadata = { title: "Reports" };
 export default async function ReportsPage() {
   const me = await requirePerm("reports");
   const supabase = await createClient();
-  const [{ data: months }, { data: owners }, { data: withdrawals }, { data: batches }, { data: topCustomers }, { data: byProduct }] = await Promise.all([
+  const [{ data: months }, { data: owners }, { data: withdrawals }, { data: batches }, { data: topCustomers }, { data: byProduct }, { data: shopRows }] = await Promise.all([
     supabase.from("v_monthly").select("*").order("month", { ascending: false }).limit(24),
     supabase.from("owners").select("*").order("created_at"),
     supabase.from("owner_withdrawals").select("*, owner:owners(name)").order("date", { ascending: false }),
     supabase.from("v_production_costs").select("*").order("date", { ascending: false }).limit(12),
     supabase.from("v_customer_balances").select("id, name, total_bought, balance").gt("total_bought", 0).order("total_bought", { ascending: false }).limit(10),
-    supabase.from("v_sales").select("product_name, cartons, bottles, total"),
+    supabase.from("v_sales").select("product_name, customer_id, cartons, bottles, total"),
+    supabase.from("customers").select("id, region, area, status"),
   ]);
   const rows = months ?? [];
   const allSales = rows.reduce((a, r) => a + Number(r.sales_total), 0);
@@ -29,6 +30,25 @@ export default async function ReportsPage() {
     const p = products.get(s.product_name) ?? { ctn: 0, btl: 0, total: 0 };
     p.ctn += s.cartons; p.btl += s.bottles; p.total += Number(s.total);
     products.set(s.product_name, p);
+  });
+  const shopById = new Map((shopRows ?? []).map((c) => [c.id, c]));
+  const regions = new Map<string, { ctn: number; total: number; areas: Map<string, number> }>();
+  (byProduct ?? []).forEach((sale) => {
+    const c = sale.customer_id ? shopById.get(sale.customer_id) : null;
+    const key = c?.region || "Walk-in / no region";
+    const r = regions.get(key) ?? { ctn: 0, total: 0, areas: new Map() };
+    r.ctn += sale.cartons;
+    r.total += Number(sale.total);
+    if (c?.area) r.areas.set(c.area, (r.areas.get(c.area) ?? 0) + sale.cartons);
+    regions.set(key, r);
+  });
+  const shopCounts = new Map<string, { all: number; active: number }>();
+  (shopRows ?? []).forEach((c) => {
+    const k = c.region || "No region";
+    const v = shopCounts.get(k) ?? { all: 0, active: 0 };
+    v.all += 1;
+    if (c.status === "active") v.active += 1;
+    shopCounts.set(k, v);
   });
   const maxMonth = Math.max(1, ...rows.map((r) => Math.max(Number(r.sales_total), Number(r.expenses_total))));
 
@@ -115,6 +135,24 @@ export default async function ReportsPage() {
             ))}
           </div>
         )}
+      </Card>
+
+      <Card title="Sales by region">
+        <List>
+          {[...regions.entries()].sort((a, b) => b[1].total - a[1].total).map(([name, r]) => (
+            <Row key={name}>
+              <div className="min-w-0">
+                <div className="font-medium">{name}</div>
+                <div className="truncate text-xs text-gray-500">
+                  {[...r.areas.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([a, n]) => `${a} ${n} ctn`).join(" · ")}
+                  {shopCounts.get(name) && ` · ${shopCounts.get(name)!.active}/${shopCounts.get(name)!.all} shops buying`}
+                </div>
+              </div>
+              <span className="shrink-0 text-right text-sm"><b>{tzs(r.total)}</b><br /><span className="text-xs text-gray-500">{r.ctn} ctn</span></span>
+            </Row>
+          ))}
+        </List>
+        {!regions.size && <Empty>No sales yet.</Empty>}
       </Card>
 
       <div className="grid gap-4 md:grid-cols-2">

@@ -12,6 +12,7 @@ export default async function MorePage() {
   const me = await requireMember();
   const links = [
     { href: "/sales", label: "Sales", show: can(me, "sales") },
+    { href: "/map", label: "Shop map", show: can(me, "sales") || can(me, "customers") },
     { href: "/customers", label: "Customers & debts", show: can(me, "sales") || can(me, "customers") },
     { href: "/production", label: "Production", show: can(me, "production") },
     { href: "/expenses", label: "Expenses", show: can(me, "expenses") },

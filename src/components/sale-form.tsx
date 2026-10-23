@@ -9,7 +9,7 @@ import { tzs } from "@/lib/format";
 type Product = { product_id: string; name: string; price_carton: number; price_bottle: number; bottles_per_carton: number; cartons: number; loose_bottles: number };
 type Customer = { id: string; name: string; phone: string; balance: number };
 
-export function SaleForm({ products, customers, date }: { products: Product[]; customers: Customer[]; date: string }) {
+export function SaleForm({ products, customers, date, customerId = "" }: { products: Product[]; customers: Customer[]; date: string; customerId?: string }) {
   const [productId, setProductId] = useState(products[0]?.product_id ?? "");
   const product = products.find((p) => p.product_id === productId);
   const [cartons, setCartons] = useState("1");
@@ -17,7 +17,7 @@ export function SaleForm({ products, customers, date }: { products: Product[]; c
   const [priceCarton, setPriceCarton] = useState<string | null>(null);
   const [priceBottle, setPriceBottle] = useState<string | null>(null);
   const [discount, setDiscount] = useState("");
-  const [customer, setCustomer] = useState("");
+  const [customer, setCustomer] = useState(customerId);
   const [paidMode, setPaidMode] = useState<"full" | "part" | "none">("full");
   const [paid, setPaid] = useState("");
 

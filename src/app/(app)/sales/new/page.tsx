@@ -6,8 +6,9 @@ import { today } from "@/lib/format";
 
 export const metadata = { title: "New sale" };
 
-export default async function NewSale() {
+export default async function NewSale({ searchParams }: { searchParams: Promise<{ customer?: string }> }) {
   await requirePerm("sales");
+  const { customer } = await searchParams;
   const supabase = await createClient();
   const [{ data: products }, { data: customers }] = await Promise.all([
     supabase.from("v_product_stock").select("*").eq("is_active", true).order("sort"),
@@ -16,7 +17,7 @@ export default async function NewSale() {
   return (
     <div className="mx-auto max-w-lg">
       <PageHeader title="New sale" />
-      <SaleForm products={products ?? []} customers={customers ?? []} date={today()} />
+      <SaleForm products={products ?? []} customers={customers ?? []} date={today()} customerId={customer} />
     </div>
   );
 }

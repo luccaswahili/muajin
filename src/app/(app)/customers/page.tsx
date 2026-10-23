@@ -5,6 +5,8 @@ import { Badge, Card, Empty, Field, List, PageHeader, Row, Stat } from "@/compon
 import { ActionForm, SubmitButton } from "@/components/forms";
 import { saveCustomer } from "@/app/actions";
 import { fmtDate, tzs } from "@/lib/format";
+import { SHOP_TYPES } from "@/lib/shops";
+import Link from "next/link";
 
 export const metadata = { title: "Customers" };
 
@@ -22,7 +24,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Customers" />
+      <PageHeader title="Customers & shops" action={<Link href="/map" className="btn-primary">Open map</Link>} />
       <div className="grid grid-cols-2 gap-3">
         <Stat label="Total owed to Muwa Gin" value={tzs(owed)} tone={owed > 0 ? "warn" : "default"} />
         <Stat label="Customers with debt" value={debtors} hint={`${rows.length} customers`} />
@@ -39,7 +41,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
                 <div className="min-w-0">
                   <div className="truncate font-medium">{c.name}</div>
                   <div className="text-xs text-gray-500">
-                    {[c.phone, c.location].filter(Boolean).join(" · ")}
+                    {[SHOP_TYPES[c.shop_type], c.area, c.phone].filter(Boolean).join(" · ")}
                     {c.last_purchase && ` · last ${fmtDate(c.last_purchase)}`}
                   </div>
                 </div>

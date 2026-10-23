@@ -12,17 +12,21 @@ export function ActionForm({
   className = "space-y-3",
   reset = true,
   confirm,
+  onSuccess,
 }: {
   action: Action;
   children: ReactNode;
   className?: string;
   reset?: boolean;
   confirm?: string;
+  onSuccess?: () => void;
 }) {
   const [state, formAction, pending] = useActionState(action, null);
   const ref = useRef<HTMLFormElement>(null);
   useEffect(() => {
     if (state?.ok && reset) ref.current?.reset();
+    if (state?.ok) onSuccess?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, reset]);
   return (
     <form

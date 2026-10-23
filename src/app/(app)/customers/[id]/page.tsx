@@ -6,6 +6,8 @@ import { Badge, Card, Field, List, PageHeader, Row, Stat } from "@/components/ui
 import { ActionForm, InlineAction, SubmitButton } from "@/components/forms";
 import { deleteRecord, recordCustomerPayment, saveCustomer } from "@/app/actions";
 import { METHOD_LABEL, fmtDate, qty, today, tzs } from "@/lib/format";
+import { REGIONS, SHOP_STATUS, SHOP_TYPES, directionsUrl } from "@/lib/shops";
+import { LocationField } from "@/components/location-field";
 
 export default async function CustomerDetail({ params }: { params: Promise<{ id: string }> }) {
   const me = await requireMember();
@@ -22,7 +24,13 @@ export default async function CustomerDetail({ params }: { params: Promise<{ id:
 
   return (
     <div className="mx-auto max-w-2xl space-y-4">
-      <PageHeader title={c.name} subtitle={[c.phone, c.location].filter(Boolean).join(" · ")} />
+      <PageHeader title={c.name} subtitle={[SHOP_TYPES[c.shop_type], c.contact_name, c.phone, c.area, c.region].filter(Boolean).join(" · ")} />
+      <div className="flex flex-wrap gap-2">
+        {can(me, "sales") && <Link href={`/sales/new?customer=${c.id}`} className="btn-primary">Sell to this shop</Link>}
+        {c.phone && <a href={`tel:${c.phone}`} className="btn-secondary">Call</a>}
+        {c.lat != null && <a href={directionsUrl(c.lat, c.lng)} target="_blank" rel="noreferrer" className="btn-secondary">Directions</a>}
+        {c.lat != null && <Link href={`/map?shop=${c.id}`} className="btn-secondary">Show on map</Link>}
+      </div>
       <div className="grid grid-cols-3 gap-3">
         <Stat label="Bought" value={tzs(c.total_bought)} />
         <Stat label="Paid" value={tzs(c.total_paid)} />
@@ -76,15 +84,33 @@ export default async function CustomerDetail({ params }: { params: Promise<{ id:
         </List>
         {!payments?.length && <p className="text-sm text-gray-500">No payments yet.</p>}
       </Card>
-      <Card title="Edit details">
+      <Card title="Shop details">
         <ActionForm action={saveCustomer} reset={false}>
           <input type="hidden" name="id" value={c.id} />
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Name"><input name="name" defaultValue={c.name} className="input" required /></Field>
-            <Field label="Phone"><input name="phone" defaultValue={c.phone} className="input" /></Field>
+            <Field label="Shop name"><input name="name" defaultValue={c.name} className="input" required /></Field>
+            <Field label="Owner / contact"><input name="contact_name" defaultValue={c.contact_name} className="input" /></Field>
+            <Field label="Phone"><input name="phone" defaultValue={c.phone} className="input" inputMode="tel" /></Field>
+            <Field label="Type">
+              <select name="shop_type" defaultValue={c.shop_type} className="input">
+                {Object.entries(SHOP_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              </select>
+            </Field>
+            <Field label="Status">
+              <select name="status" defaultValue={c.status} className="input">
+                {Object.entries(SHOP_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              </select>
+            </Field>
+            <Field label="Region">
+              <select name="region" defaultValue={c.region || "Dar es Salaam"} className="input">
+                {REGIONS.map((r) => <option key={r}>{r}</option>)}
+              </select>
+            </Field>
+            <Field label="Area / street"><input name="area" defaultValue={c.area} className="input" /></Field>
+            <Field label="Directions / landmark"><input name="location" defaultValue={c.location} className="input" /></Field>
           </div>
-          <Field label="Location"><input name="location" defaultValue={c.location} className="input" /></Field>
           <Field label="Notes"><input name="notes" defaultValue={c.notes} className="input" /></Field>
+          <LocationField lat={c.lat} lng={c.lng} />
           <SubmitButton>Save</SubmitButton>
         </ActionForm>
       </Card>

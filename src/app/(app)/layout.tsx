@@ -7,8 +7,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const bottom = [
     { href: "/", label: "Home", icon: "home", show: true },
     { href: "/sales", label: "Sales", icon: "sales", show: can(me, "sales") },
+    { href: "/map", label: "Map", icon: "map", show: can(me, "sales") || can(me, "customers") },
     { href: "/production", label: "Production", icon: "production", show: can(me, "production") },
-    { href: "/expenses", label: "Expenses", icon: "expenses", show: can(me, "expenses") },
     { href: "/money", label: "Bank", icon: "money", show: can(me, "bank") },
   ].filter((i) => i.show).slice(0, 4);
   bottom.push({ href: "/more", label: "More", icon: "more", show: true });
@@ -16,7 +16,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const side = [
     { href: "/", label: "Home", icon: "home", show: true },
     { href: "/sales", label: "Sales", icon: "", show: can(me, "sales") },
-    { href: "/customers", label: "Customers", icon: "", show: can(me, "sales") || can(me, "customers") },
+    { href: "/map", label: "Shop map", icon: "", show: can(me, "sales") || can(me, "customers") },
+    { href: "/customers", label: "Customers & shops", icon: "", show: can(me, "sales") || can(me, "customers") },
     { href: "/production", label: "Production", icon: "", show: can(me, "production") },
     { href: "/expenses", label: "Expenses", icon: "", show: can(me, "expenses") },
     { href: "/money", label: "Bank & cash", icon: "", show: can(me, "bank") },
