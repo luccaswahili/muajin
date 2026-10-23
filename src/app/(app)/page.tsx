@@ -54,7 +54,6 @@ export default async function Dashboard() {
         <Stat label="Sales today" value={tzs(todayTotal)} hint={`${todayCtn} cartons`} href="/sales" />
         <Stat label="Sales this month" value={tzs(monthTotal)} hint={`${monthCtn} cartons`} href="/reports" />
         <Stat label="Expenses this month" value={tzs(monthExpenses)} href="/expenses" />
-        <Stat label="Profit this month" value={tzs(monthTotal - monthExpenses)} hint="Sales minus expenses" href="/reports" tone={monthTotal - monthExpenses < 0 ? "danger" : "default"} />
       </div>
 
       {can(me, "bank") && needsMyReview.length > 0 && (
