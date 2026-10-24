@@ -52,7 +52,7 @@ export async function updateMyName(_: ActionState, fd: FormData): Promise<Action
 // ---------------------------------------------------------------- sales
 const phoneKey = (phone: string) => phone.replace(/\D/g, "").slice(-9);
 
-const NEAR_METRES = 6;
+const NEAR_METRES = 15;
 
 /**
  * Warn before saving when another customer has the same phone number or is
