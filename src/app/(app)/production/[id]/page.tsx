@@ -1,10 +1,10 @@
 import { notFound } from "next/navigation";
 import { requirePerm } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { Card, List, PageHeader, Row, Stat } from "@/components/ui";
-import { InlineAction } from "@/components/forms";
+import { Card, Field, List, PageHeader, Row, Stat } from "@/components/ui";
+import { ActionForm, InlineAction, SubmitButton } from "@/components/forms";
 import { ExpenseForm } from "@/components/expense-form";
-import { deleteRecord } from "@/app/actions";
+import { deleteRecord, updateProduction } from "@/app/actions";
 import { expenseFormOptions } from "@/lib/options";
 import { fmtDate, fmtDateTime, num, today, tzs } from "@/lib/format";
 
@@ -68,6 +68,27 @@ export default async function ProductionDetail({ params }: { params: Promise<{ i
         </details>
       </Card>
       {p.notes && <Card title="Note"><p className="text-sm">{p.notes}</p></Card>}
+      {me.is_admin ? (
+        <Card>
+          <details>
+            <summary className="cursor-pointer text-sm font-medium text-brand-600">Edit batch (admin only)</summary>
+            <ActionForm action={updateProduction} className="mt-3 space-y-3">
+              <input type="hidden" name="id" value={p.id} />
+              <div className="grid grid-cols-2 gap-2">
+                <Field label="Date"><input type="date" name="date" defaultValue={p.date} className="input" required /></Field>
+                <Field label="Drums used"><input name="drums" inputMode="decimal" defaultValue={Number(p.drums_used)} className="input" /></Field>
+                <Field label="Cartons"><input name="cartons" inputMode="numeric" defaultValue={p.cartons_produced} className="input" /></Field>
+                <Field label="Loose bottles"><input name="loose_bottles" inputMode="numeric" defaultValue={p.loose_bottles} className="input" /></Field>
+              </div>
+              <Field label="Note"><textarea name="notes" defaultValue={p.notes ?? ""} rows={2} className="input" /></Field>
+              <p className="text-xs text-gray-500">Stock and the materials used are recalculated. Damaged items stay as recorded.</p>
+              <SubmitButton>Save changes</SubmitButton>
+            </ActionForm>
+          </details>
+        </Card>
+      ) : (
+        <p className="text-xs text-gray-500">This batch is approved. Only the admin can change it.</p>
+      )}
       <div className="flex items-center justify-between text-xs text-gray-500">
         <span>Recorded {fmtDateTime(p.created_at)}</span>
         {me.is_admin && <InlineAction

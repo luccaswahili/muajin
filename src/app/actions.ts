@@ -129,6 +129,18 @@ export async function createProduction(_: ActionState, fd: FormData): Promise<Ac
   redirect(`/production/${data}`);
 }
 
+export async function updateProduction(_: ActionState, fd: FormData): Promise<ActionState> {
+  const { error } = await rpc("update_production", {
+    p_id: str(fd, "id"),
+    p_drums: numOr(fd, "drums", 0),
+    p_cartons: numOr(fd, "cartons", 0),
+    p_loose_bottles: numOr(fd, "loose_bottles", 0),
+    p_date: str(fd, "date"),
+    p_notes: str(fd, "notes"),
+  });
+  return error ? fail(error) : done("Batch updated");
+}
+
 // ---------------------------------------------------------------- expenses
 export async function createExpense(_: ActionState, fd: FormData): Promise<ActionState> {
   const material = optStr(fd, "material_id");
