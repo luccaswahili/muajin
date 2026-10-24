@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type * as Leaflet from "leaflet";
 import { ActionForm, SubmitButton } from "@/components/forms";
-import { pinCustomer, saveCustomer } from "@/app/actions";
+import { pinCustomer, saveCustomer, searchCustomers } from "@/app/actions";
 import { REGIONS, SHOP_STATUS, SHOP_TYPES, directionsUrl, distanceKm, fmtDistance } from "@/lib/shops";
 import { tzs } from "@/lib/format";
 
@@ -23,7 +23,9 @@ function dot(color: string, size = 18, ring = "#fff") {
   return `<div style="width:${size}px;height:${size}px;border-radius:9999px;background:${color};border:3px solid ${ring};box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>`;
 }
 
-export function ShopMap({ shops, customers, canAdd, focusId }: { shops: Shop[]; customers: CustomerPick[]; canAdd: boolean; focusId?: string }) {
+export function ShopMap({ shops, notOnMap, notOnMapCount, canAdd, focusId }: {
+  shops: Shop[]; notOnMap: CustomerPick[]; notOnMapCount: number; canAdd: boolean; focusId?: string;
+}) {
   const router = useRouter();
   const el = useRef<HTMLDivElement>(null);
   const L = useRef<typeof Leaflet | null>(null);
@@ -194,15 +196,26 @@ export function ShopMap({ shops, customers, canAdd, focusId }: { shops: Shop[]; 
       .slice(0, 15);
   }, [visible, me]);
   const sel = shops.find((s) => s.id === selected);
-  const matches = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const digits = q.replace(/\D/g, "");
-    return customers
-      .filter((c) => !q || c.name.toLowerCase().includes(q) || (digits.length >= 3 && c.phone.replace(/\D/g, "").includes(digits)))
-      .sort((a, b) => Number(a.onMap) - Number(b.onMap))
-      .slice(0, 30);
-  }, [customers, search]);
-  const notOnMap = customers.filter((c) => !c.onMap).length;
+  const [hits, setHits] = useState<CustomerPick[]>([]);
+  const [searching, setSearching] = useState(false);
+  useEffect(() => {
+    const text = search.trim();
+    if (!text) return;
+    let stale = false;
+    const t = setTimeout(async () => {
+      setSearching(true);
+      const found = await searchCustomers(text);
+      if (!stale) {
+        setHits(found);
+        setSearching(false);
+      }
+    }, 250);
+    return () => {
+      stale = true;
+      clearTimeout(t);
+    };
+  }, [search]);
+  const matches = search.trim() ? hits : notOnMap;
 
   function focus(s: Shop) {
     setSelected(s.id);
@@ -321,7 +334,7 @@ export function ShopMap({ shops, customers, canAdd, focusId }: { shops: Shop[]; 
               className={`rounded-xl border-2 px-3 py-2 text-left text-sm ${mode === "existing" ? "border-brand-600 bg-brand-50 font-semibold text-brand-800" : "border-gray-200 text-gray-600"}`}
             >
               Customer already registered? Add from list
-              {notOnMap > 0 && <span className="block text-xs font-normal text-gray-500">{notOnMap} customers are not on the map yet</span>}
+              {notOnMapCount > 0 && <span className="block text-xs font-normal text-gray-500">{notOnMapCount} customers are not on the map yet</span>}
             </button>
           </div>
 
@@ -389,7 +402,11 @@ export function ShopMap({ shops, customers, canAdd, focusId }: { shops: Shop[]; 
                     <span className={`shrink-0 text-xs ${c.onMap ? "text-gray-400" : "font-semibold text-amber-700"}`}>{c.onMap ? "on map" : "not on map"}</span>
                   </button>
                 ))}
-                {matches.length === 0 && <p className="py-4 text-center text-sm text-gray-500">No customer found. Use “Add new customer here”.</p>}
+                {!search.trim() && matches.length > 0 && <p className="pt-2 text-xs text-gray-400">Newest customers not on the map. Search to find anyone else.</p>}
+                {searching && <p className="py-2 text-center text-sm text-gray-400">Searching…</p>}
+                {!searching && matches.length === 0 && (
+                  <p className="py-4 text-center text-sm text-gray-500">{search.trim() ? "No customer found. Use “Add new customer here”." : "Type a name or phone number."}</p>
+                )}
               </div>
             </div>
           )}

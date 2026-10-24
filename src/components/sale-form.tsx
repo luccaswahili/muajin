@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ActionForm, SubmitButton } from "@/components/forms";
-import { createSale } from "@/app/actions";
+import { createSale, searchCustomers, type CustomerHit } from "@/app/actions";
 import { tzs } from "@/lib/format";
 
 type Product = { product_id: string; name: string; price_carton: number; price_bottle: number; bottles_per_carton: number; cartons: number; loose_bottles: number };
@@ -79,18 +79,11 @@ export function SaleForm({ products, customers, date, customerId = "" }: { produ
         <div className="text-3xl font-bold tabular-nums">{tzs(total)}</div>
       </div>
 
-      <label className="block">
+      <div>
         <span className="mb-1 block text-sm font-medium">Customer</span>
-        <select name="customer_id" className="input" value={customer} onChange={(e) => setCustomer(e.target.value)}>
-          <option value="">Walk-in (no name)</option>
-          <option value="new">+ New customer</option>
-          {customers.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}{c.phone ? ` · ${c.phone}` : ""}{Number(c.balance) > 0 ? ` (owes ${tzs(c.balance)})` : ""}
-            </option>
-          ))}
-        </select>
-      </label>
+        <input type="hidden" name="customer_id" value={customer} />
+        <CustomerPicker customers={customers} value={customer} onChange={setCustomer} />
+      </div>
       {customer === "new" && (
         <div className="grid grid-cols-2 gap-2">
           <input name="new_customer_name" className="input" placeholder="Customer name" required />
@@ -134,5 +127,92 @@ export function SaleForm({ products, customers, date, customerId = "" }: { produ
       <SubmitButton>Save sale · {tzs(total)}</SubmitButton>
       <Link href="/sales" className="block text-center text-sm text-gray-500">See all sales</Link>
     </ActionForm>
+  );
+}
+
+function CustomerPicker({ customers, value, onChange }: { customers: Customer[]; value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState<CustomerHit[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [chosen, setChosen] = useState<Customer | null>(customers.find((c) => c.id === value) ?? null);
+
+  // Search on the server as the user types (works with thousands of customers)
+  useEffect(() => {
+    const text = q.trim();
+    if (!text) return;
+    let stale = false;
+    const t = setTimeout(async () => {
+      setSearching(true);
+      const hits = await searchCustomers(text);
+      if (!stale) {
+        setResults(hits);
+        setSearching(false);
+      }
+    }, 250);
+    return () => {
+      stale = true;
+      clearTimeout(t);
+    };
+  }, [q]);
+
+  const pick = (v: string, c: Customer | null = null) => {
+    onChange(v);
+    setChosen(c);
+    setOpen(false);
+    setQ("");
+    setResults([]);
+  };
+
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} className="input flex items-center justify-between text-left">
+        <span className="min-w-0 truncate">
+          {chosen && value === chosen.id ? (
+            <>
+              <span className="font-medium">{chosen.name}</span>
+              {chosen.phone && <span className="text-gray-500"> · {chosen.phone}</span>}
+              {Number(chosen.balance) > 0 && <span className="text-amber-700"> · owes {tzs(chosen.balance)}</span>}
+            </>
+          ) : value === "new" ? (
+            "+ New customer"
+          ) : (
+            "Walk-in (no name)"
+          )}
+        </span>
+        <span className="shrink-0 text-sm text-brand-600">🔍 {value && value !== "new" ? "Change" : "Search"}</span>
+      </button>
+    );
+  }
+
+  const shown = q.trim() ? results : [];
+  return (
+    <div className="rounded-xl border border-brand-300 bg-white p-2 ring-2 ring-brand-100">
+      <input
+        autoFocus
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        className="input"
+        placeholder="Search by name or phone number"
+        inputMode="search"
+      />
+      <div className="mt-1 divide-y divide-gray-100">
+        {shown.map((c) => (
+          <button type="button" key={c.id} onClick={() => pick(c.id, c)} className="flex w-full items-center justify-between gap-2 px-1 py-2 text-left">
+            <span className="min-w-0">
+              <span className="block truncate font-medium">{c.name}</span>
+              <span className="block text-xs text-gray-500">{[c.phone || "No phone", c.area].filter(Boolean).join(" · ")}</span>
+            </span>
+            {Number(c.balance) > 0 && <span className="shrink-0 text-xs text-amber-700">owes {tzs(c.balance)}</span>}
+          </button>
+        ))}
+        {q.trim() && !searching && shown.length === 0 && <p className="px-1 py-2 text-sm text-gray-500">No customer found.</p>}
+        {searching && <p className="px-1 py-2 text-sm text-gray-400">Searching…</p>}
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <button type="button" onClick={() => pick("new")} className="btn-secondary !py-2 text-sm">+ New customer</button>
+        <button type="button" onClick={() => pick("")} className="btn-secondary !py-2 text-sm">Walk-in (no name)</button>
+      </div>
+    </div>
   );
 }

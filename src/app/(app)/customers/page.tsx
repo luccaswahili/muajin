@@ -16,7 +16,11 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
   const { q, nomap } = await searchParams;
   const supabase = await createClient();
   let query = supabase.from("v_customer_balances").select("*").order("balance", { ascending: false }).order("name");
-  if (q) query = query.or(`name.ilike.%${q.replace(/[%,()]/g, "")}%,phone.ilike.%${q.replace(/[%,()]/g, "")}%`);
+  if (q) {
+    const digits = q.replace(/\D/g, "").replace(/^255/, "").replace(/^0+/, "");
+    const safe = q.replace(/[%,()*\\]/g, "");
+    query = digits.length >= 3 ? query.or(`name.ilike.%${safe}%,phone_digits.ilike.%${digits}%`) : query.ilike("name", `%${safe}%`);
+  }
   if (nomap) query = query.is("lat", null);
   const { data } = await query;
   const rows = data ?? [];

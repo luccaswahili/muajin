@@ -10,14 +10,22 @@ export default async function MapPage({ searchParams }: { searchParams: Promise<
   if (!can(me, "sales") && !can(me, "customers")) redirect("/");
   const { shop } = await searchParams;
   const supabase = await createClient();
-  const [{ data }, { data: all }] = await Promise.all([
+  const [{ data }, all] = await Promise.all([
     supabase
       .from("v_customer_balances")
       .select("id, name, phone, contact_name, shop_type, status, region, area, lat, lng, balance, cartons_bought, last_purchase")
       .not("lat", "is", null)
       .not("lng", "is", null),
-    supabase.from("customers").select("id, name, phone, area, lat").order("name"),
+    supabase.from("customers").select("id, name, phone, area", { count: "exact" }).is("lat", null).order("created_at", { ascending: false }).limit(20),
   ]);
-  const customers: CustomerPick[] = (all ?? []).map((c) => ({ id: c.id, name: c.name, phone: c.phone ?? "", area: c.area ?? "", onMap: c.lat != null }));
-  return <ShopMap shops={(data ?? []) as Shop[]} customers={customers} canAdd={can(me, "sales") || can(me, "customers")} focusId={shop} />;
+  const notOnMap: CustomerPick[] = (all.data ?? []).map((c) => ({ id: c.id, name: c.name, phone: c.phone ?? "", area: c.area ?? "", onMap: false }));
+  return (
+    <ShopMap
+      shops={(data ?? []) as Shop[]}
+      notOnMap={notOnMap}
+      notOnMapCount={all.count ?? notOnMap.length}
+      canAdd={can(me, "sales") || can(me, "customers")}
+      focusId={shop}
+    />
+  );
 }

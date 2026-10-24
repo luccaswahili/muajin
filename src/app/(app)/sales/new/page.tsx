@@ -12,7 +12,9 @@ export default async function NewSale({ searchParams }: { searchParams: Promise<
   const supabase = await createClient();
   const [{ data: products }, { data: customers }] = await Promise.all([
     supabase.from("v_product_stock").select("*").eq("is_active", true).order("sort"),
-    supabase.from("v_customer_balances").select("id, name, phone, balance").order("name"),
+    customer
+      ? supabase.from("v_customer_balances").select("id, name, phone, balance").eq("id", customer)
+      : Promise.resolve({ data: [] }),
   ]);
   return (
     <div className="mx-auto max-w-lg">
