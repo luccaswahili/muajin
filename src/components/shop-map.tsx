@@ -327,6 +327,7 @@ export function ShopMap({ shops, customers, canAdd, focusId }: { shops: Shop[]; 
 
           {mode === "new" ? (
             <ActionForm
+              key="new"
               action={saveCustomer}
               onSuccess={() => { setAdding(false); setPin(null); router.refresh(); }}
             >
@@ -352,6 +353,7 @@ export function ShopMap({ shops, customers, canAdd, focusId }: { shops: Shop[]; 
             </ActionForm>
           ) : picked ? (
             <ActionForm
+              key={`pin-${picked.id}`}
               action={pinCustomer}
               onSuccess={() => { setAdding(false); setPin(null); setPicked(null); router.refresh(); }}
             >
