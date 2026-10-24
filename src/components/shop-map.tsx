@@ -307,7 +307,7 @@ export function ShopMap({ shops, customers, canAdd, focusId }: { shops: Shop[]; 
             <button onClick={() => { setAdding(false); setPin(null); }} className="text-sm text-gray-500">Cancel</button>
           </div>
           <p className="mb-3 text-xs text-gray-500">
-            {locating ? "Finding your location…" : pin ? `📍 ${pin.lat.toFixed(5)}, ${pin.lng.toFixed(5)}${me ? ` (GPS ±${Math.round(me.acc)} m)` : ""}. Drag the pin or tap the map to adjust.` : "Tap the map to place the pin."}
+            {locating ? "Finding your location…" : pin ? `📍 Pin is at your location${me ? ` (accurate to about ${Math.round(me.acc)} m)` : ""}. Drag the pin or tap the map to adjust.` : "Tap the map to place the pin."}
           </p>
           <div className="mb-3 grid gap-2">
             <button

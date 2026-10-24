@@ -13,7 +13,7 @@ export function LocationField({ lat, lng }: { lat: number | null; lng: number | 
       <input type="hidden" name="lat" value={pos.lat ?? ""} />
       <input type="hidden" name="lng" value={pos.lng ?? ""} />
       <div className="mb-2 text-gray-600">
-        {pos.lat != null && pos.lng != null ? `📍 ${pos.lat.toFixed(5)}, ${pos.lng.toFixed(5)}` : "No location saved yet"}
+        {pos.lat != null && pos.lng != null ? "📍 Location saved" : "No location saved yet"}
       </div>
       <div className="flex gap-2">
         <button
