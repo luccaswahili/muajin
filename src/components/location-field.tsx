@@ -81,7 +81,13 @@ export function PinHereButton({ id }: { id: string }) {
         {pending ? "Saving…" : "📍 I'm at this shop now, save location"}
       </button>
       {msg && <p className="mt-1 text-xs text-gray-500">{msg}</p>}
-      {state?.error && <p className="mt-1 text-xs text-red-600">{state.error}</p>}
+      {state?.error && <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{state.error}</p>}
+      {state?.confirm && pos && (
+        <div className="mt-2 flex items-center gap-2">
+          <input type="hidden" name="confirm_duplicate" value="true" />
+          <button type="submit" disabled={pending} className="btn-secondary w-full">{state.confirm}</button>
+        </div>
+      )}
     </form>
   );
 }

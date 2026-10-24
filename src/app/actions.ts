@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { PERMS } from "@/lib/auth";
 import { displayLogin, loginToEmail } from "@/lib/format";
+import { distanceKm } from "@/lib/shops";
 
 export type ActionState = { ok?: boolean; error?: string; message?: string; confirm?: string } | null;
 
@@ -51,16 +52,37 @@ export async function updateMyName(_: ActionState, fd: FormData): Promise<Action
 // ---------------------------------------------------------------- sales
 const phoneKey = (phone: string) => phone.replace(/\D/g, "").slice(-9);
 
-/** Another customer with the same phone number, unless the user ticked "save anyway". */
-async function phoneDuplicate(fd: FormData, phone: string, exceptId?: string): Promise<ActionState> {
+const NEAR_METRES = 6;
+
+/**
+ * Warn before saving when another customer has the same phone number or is
+ * within a few metres of the new pin, unless the user ticked "save anyway".
+ */
+async function duplicateWarning(
+  fd: FormData,
+  { phone = "", lat = null, lng = null, exceptId }: { phone?: string; lat?: number | null; lng?: number | null; exceptId?: string },
+): Promise<ActionState> {
+  if (bool(fd, "confirm_duplicate")) return null;
   const key = phoneKey(phone);
-  if (key.length < 6 || bool(fd, "confirm_duplicate")) return null;
+  const checkNear = lat !== null && lng !== null;
+  if (key.length < 6 && !checkNear) return null;
   const supabase = await createClient();
-  const { data } = await supabase.from("customers").select("id, name, phone").neq("phone", "");
-  const other = (data ?? []).find((c) => c.id !== exceptId && phoneKey(c.phone) === key);
-  if (!other) return null;
+  const { data } = await supabase.from("customers").select("id, name, phone, lat, lng");
+  const others = (data ?? []).filter((c) => c.id !== exceptId);
+  const warnings: string[] = [];
+  const samePhone = key.length >= 6 ? others.find((c) => c.phone && phoneKey(c.phone) === key) : undefined;
+  if (samePhone) warnings.push(`${samePhone.name} already uses the number ${samePhone.phone}.`);
+  if (checkNear) {
+    const near = others
+      .filter((c) => c.lat != null && c.lng != null && c.id !== samePhone?.id)
+      .map((c) => ({ ...c, m: distanceKm({ lat: lat!, lng: lng! }, { lat: c.lat, lng: c.lng }) * 1000 }))
+      .filter((c) => c.m <= NEAR_METRES)
+      .sort((a, b) => a.m - b.m);
+    for (const c of near) warnings.push(`${c.name}${c.phone ? ` (${c.phone})` : ""} is already registered ${Math.round(c.m)} m from here.`);
+  }
+  if (!warnings.length) return null;
   return {
-    error: `${other.name} already uses the number ${other.phone}. If it is the same customer, use "Already registered" instead.`,
+    error: `${warnings.join(" ")} If it is the same customer, don't add them again.`,
     confirm: "It's a different customer, save anyway",
   };
 }
@@ -68,7 +90,7 @@ async function phoneDuplicate(fd: FormData, phone: string, exceptId?: string): P
 export async function createSale(_: ActionState, fd: FormData): Promise<ActionState> {
   const customer = str(fd, "customer_id");
   if (customer === "new") {
-    const dupe = await phoneDuplicate(fd, str(fd, "new_customer_phone"));
+    const dupe = await duplicateWarning(fd, { phone: str(fd, "new_customer_phone") });
     if (dupe) return dupe;
   }
   const { error } = await rpc("record_sale", {
@@ -110,8 +132,6 @@ export async function saveCustomer(_: ActionState, fd: FormData): Promise<Action
     notes: str(fd, "notes"),
   };
   if (!row.name) return { error: "Name is required" };
-  const dupe = await phoneDuplicate(fd, String(row.phone), id || undefined);
-  if (dupe) return dupe;
   // Shop fields are only sent by forms that show them
   for (const k of ["shop_type", "status", "contact_name", "region", "area"]) {
     if (fd.has(k)) row[k] = str(fd, k);
@@ -123,6 +143,14 @@ export async function saveCustomer(_: ActionState, fd: FormData): Promise<Action
     row.lat = lat;
     row.lng = lng;
   }
+  // Nearby check only for new customers; edits keep their pin
+  const dupe = await duplicateWarning(fd, {
+    phone: String(row.phone),
+    lat: id ? null : ((row.lat as number | null) ?? null),
+    lng: id ? null : ((row.lng as number | null) ?? null),
+    exceptId: id || undefined,
+  });
+  if (dupe) return dupe;
   const { error } = id
     ? await supabase.from("customers").update(row).eq("id", id)
     : await supabase.from("customers").insert(row);
@@ -136,6 +164,8 @@ export async function pinCustomer(_: ActionState, fd: FormData): Promise<ActionS
   const lng = numOr(fd, "lng");
   if (!id) return { error: "Choose a customer" };
   if (lat === null || lng === null) return { error: "Location not found yet" };
+  const dupe = await duplicateWarning(fd, { lat, lng, exceptId: id });
+  if (dupe) return dupe;
   const supabase = await createClient();
   const { data, error } = await supabase.from("customers").update({ lat, lng }).eq("id", id).select("name").maybeSingle();
   if (error) return fail(error);
