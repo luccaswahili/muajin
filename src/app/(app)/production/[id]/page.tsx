@@ -15,7 +15,7 @@ export default async function ProductionDetail({ params }: { params: Promise<{ i
   const { data: p } = await supabase.from("v_production_costs").select("*").eq("id", id).maybeSingle();
   if (!p) notFound();
   const [{ data: mats }, { data: exps }, opts] = await Promise.all([
-    supabase.from("material_movements").select("qty, unit_cost, reason, notes, material:materials(name, unit)").eq("production_id", id).order("reason", { ascending: false }),
+    supabase.from("material_movements").select("qty, unit_cost, reason, notes, material:materials(name, unit, is_free)").eq("production_id", id).order("reason", { ascending: false }),
     supabase.from("v_expenses").select("*").eq("production_id", id).order("date"),
     expenseFormOptions(),
   ]);
@@ -46,7 +46,7 @@ export default async function ProductionDetail({ params }: { params: Promise<{ i
                   {m.reason === "damage" && <span className="ml-1 rounded bg-red-100 px-1.5 text-xs text-red-700">damaged</span>}
                   <span className="block text-xs text-gray-500">{m.notes}</span>
                 </span>
-                <span className="text-sm tabular-nums">{Number(m.unit_cost) ? tzs(-m.qty * m.unit_cost) : <span className="text-gray-400">no cost set</span>}</span>
+                <span className="text-sm tabular-nums">{Number(m.unit_cost) ? tzs(-m.qty * m.unit_cost) : mat?.is_free ? <span className="text-gray-400">free</span> : <span className="text-gray-400">no cost set</span>}</span>
               </Row>
             );
           })}

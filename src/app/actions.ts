@@ -266,7 +266,8 @@ export async function saveMaterial(_: ActionState, fd: FormData): Promise<Action
   const row = {
     name: str(fd, "name"),
     unit: str(fd, "unit") || "pcs",
-    unit_cost: numOr(fd, "unit_cost", 0),
+    unit_cost: bool(fd, "is_free") ? 0 : numOr(fd, "unit_cost", 0),
+    is_free: bool(fd, "is_free"),
     low_stock_level: numOr(fd, "low_stock_level", 0),
     usage: str(fd, "usage") || "none",
     usage_qty: numOr(fd, "usage_qty", 0),

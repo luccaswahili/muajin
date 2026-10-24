@@ -50,7 +50,7 @@ export default async function StockPage() {
               <Row key={m.material_id}>
                 <div>
                   <div className="font-medium">{m.name}</div>
-                  <div className="text-xs text-gray-500">{Number(m.unit_cost) ? `${tzs(m.unit_cost)} per ${m.unit}` : "No cost price set"}</div>
+                  <div className="text-xs text-gray-500">{Number(m.unit_cost) ? `${tzs(m.unit_cost)} per ${m.unit}` : m.is_free ? "Free (comes with another item)" : "No cost price set"}</div>
                 </div>
                 <div className="text-right">
                   <div className={`font-semibold tabular-nums ${Number(m.qty) < 0 ? "text-red-600" : ""}`}>{num(m.qty, 2)} {m.unit}</div>

@@ -313,7 +313,10 @@ function MatForm({ m, products }: { m?: { [k: string]: unknown }; products: { id
       </Field>
     </div>
     <div className="flex items-center justify-between">
-      <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="is_active" defaultChecked={m ? !!m.is_active : true} /> Active</label>
+      <div className="flex flex-wrap gap-x-4 gap-y-1">
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="is_active" defaultChecked={m ? !!m.is_active : true} /> Active</label>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="is_free" defaultChecked={!!m?.is_free} /> Free (comes with another item)</label>
+      </div>
       <SubmitButton className="btn-secondary !py-1.5">{m ? "Save" : "Add item"}</SubmitButton>
     </div>
   </ActionForm>
