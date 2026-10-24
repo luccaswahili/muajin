@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PERMS } from "@/lib/auth";
 import { displayLogin, loginToEmail } from "@/lib/format";
 
-export type ActionState = { ok?: boolean; error?: string; message?: string } | null;
+export type ActionState = { ok?: boolean; error?: string; message?: string; confirm?: string } | null;
 
 const str = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 const optStr = (fd: FormData, k: string) => str(fd, k) || null;
@@ -49,8 +49,28 @@ export async function updateMyName(_: ActionState, fd: FormData): Promise<Action
 }
 
 // ---------------------------------------------------------------- sales
+const phoneKey = (phone: string) => phone.replace(/\D/g, "").slice(-9);
+
+/** Another customer with the same phone number, unless the user ticked "save anyway". */
+async function phoneDuplicate(fd: FormData, phone: string, exceptId?: string): Promise<ActionState> {
+  const key = phoneKey(phone);
+  if (key.length < 6 || bool(fd, "confirm_duplicate")) return null;
+  const supabase = await createClient();
+  const { data } = await supabase.from("customers").select("id, name, phone").neq("phone", "");
+  const other = (data ?? []).find((c) => c.id !== exceptId && phoneKey(c.phone) === key);
+  if (!other) return null;
+  return {
+    error: `${other.name} already uses the number ${other.phone}. If it is the same customer, use "Already registered" instead.`,
+    confirm: "It's a different customer, save anyway",
+  };
+}
+
 export async function createSale(_: ActionState, fd: FormData): Promise<ActionState> {
   const customer = str(fd, "customer_id");
+  if (customer === "new") {
+    const dupe = await phoneDuplicate(fd, str(fd, "new_customer_phone"));
+    if (dupe) return dupe;
+  }
   const { error } = await rpc("record_sale", {
     p_product_id: str(fd, "product_id"),
     p_cartons: numOr(fd, "cartons", 0),
@@ -90,6 +110,8 @@ export async function saveCustomer(_: ActionState, fd: FormData): Promise<Action
     notes: str(fd, "notes"),
   };
   if (!row.name) return { error: "Name is required" };
+  const dupe = await phoneDuplicate(fd, String(row.phone), id || undefined);
+  if (dupe) return dupe;
   // Shop fields are only sent by forms that show them
   for (const k of ["shop_type", "status", "contact_name", "region", "area"]) {
     if (fd.has(k)) row[k] = str(fd, k);
@@ -105,6 +127,20 @@ export async function saveCustomer(_: ActionState, fd: FormData): Promise<Action
     ? await supabase.from("customers").update(row).eq("id", id)
     : await supabase.from("customers").insert(row);
   return error ? fail(error) : done(id ? "Saved" : `${row.name} registered`);
+}
+
+/** Save an existing customer's location (e.g. standing at their shop). */
+export async function pinCustomer(_: ActionState, fd: FormData): Promise<ActionState> {
+  const id = str(fd, "id");
+  const lat = numOr(fd, "lat");
+  const lng = numOr(fd, "lng");
+  if (!id) return { error: "Choose a customer" };
+  if (lat === null || lng === null) return { error: "Location not found yet" };
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("customers").update({ lat, lng }).eq("id", id).select("name").maybeSingle();
+  if (error) return fail(error);
+  if (!data) return { error: "Customer not found" };
+  return done(`${data.name} is now on the map`);
 }
 
 // ---------------------------------------------------------------- production

@@ -7,7 +7,7 @@ import { ActionForm, InlineAction, SubmitButton } from "@/components/forms";
 import { deleteRecord, recordCustomerPayment, saveCustomer } from "@/app/actions";
 import { METHOD_LABEL, fmtDate, qty, today, tzs } from "@/lib/format";
 import { REGIONS, SHOP_STATUS, SHOP_TYPES, directionsUrl } from "@/lib/shops";
-import { LocationField } from "@/components/location-field";
+import { LocationField, PinHereButton } from "@/components/location-field";
 
 export default async function CustomerDetail({ params }: { params: Promise<{ id: string }> }) {
   const me = await requireMember();
@@ -26,11 +26,17 @@ export default async function CustomerDetail({ params }: { params: Promise<{ id:
     <div className="mx-auto max-w-2xl space-y-4">
       <PageHeader title={c.name} subtitle={[SHOP_TYPES[c.shop_type], c.contact_name, c.phone, c.area, c.region].filter(Boolean).join(" · ")} />
       <div className="flex flex-wrap gap-2">
-        {can(me, "sales") && <Link href={`/sales/new?customer=${c.id}`} className="btn-primary">Sell to this shop</Link>}
+        {can(me, "sales") && <Link href={`/sales/new?customer=${c.id}`} className="btn-primary">Sell to this customer</Link>}
         {c.phone && <a href={`tel:${c.phone}`} className="btn-secondary">Call</a>}
         {c.lat != null && <a href={directionsUrl(c.lat, c.lng)} target="_blank" rel="noreferrer" className="btn-secondary">Directions</a>}
         {c.lat != null && <Link href={`/map?shop=${c.id}`} className="btn-secondary">Show on map</Link>}
       </div>
+      {c.lat == null && (
+        <Card>
+          <p className="mb-2 text-sm text-gray-600">This customer is not on the map yet.</p>
+          <PinHereButton id={c.id} />
+        </Card>
+      )}
       <div className="grid grid-cols-3 gap-3">
         <Stat label="Bought" value={tzs(c.total_bought)} />
         <Stat label="Paid" value={tzs(c.total_paid)} />

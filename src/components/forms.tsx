@@ -40,6 +40,11 @@ export function ActionForm({
       <fieldset disabled={pending} className="contents">
         {children}
       </fieldset>
+      {state?.confirm && (
+        <label className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <input type="checkbox" name="confirm_duplicate" /> {state.confirm}
+        </label>
+      )}
       {state?.error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{state.error}</p>}
       {state?.ok && state.message && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{state.message}</p>}
     </form>

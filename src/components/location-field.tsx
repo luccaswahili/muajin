@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { pinCustomer } from "@/app/actions";
 
 /** Hidden lat/lng inputs with a button to fill them from the phone's GPS. */
 export function LocationField({ lat, lng }: { lat: number | null; lng: number | null }) {
@@ -39,5 +41,47 @@ export function LocationField({ lat, lng }: { lat: number | null; lng: number | 
       </div>
       {msg && <p className="mt-1 text-xs text-gray-500">{msg}</p>}
     </div>
+  );
+}
+
+/** One tap: get GPS and save it as this customer's location. */
+export function PinHereButton({ id }: { id: string }) {
+  const router = useRouter();
+  const [state, action, pending] = useActionState(pinCustomer, null);
+  const form = useRef<HTMLFormElement>(null);
+  const [pos, setPos] = useState<{ lat: number; lng: number } | null>(null);
+  const [msg, setMsg] = useState("");
+  useEffect(() => {
+    if (pos) form.current?.requestSubmit();
+  }, [pos]);
+  useEffect(() => {
+    if (state?.ok) router.refresh();
+  }, [state, router]);
+  return (
+    <form ref={form} action={action}>
+      <input type="hidden" name="id" value={id} />
+      <input type="hidden" name="lat" value={pos?.lat ?? ""} />
+      <input type="hidden" name="lng" value={pos?.lng ?? ""} />
+      <button
+        type="button"
+        disabled={pending}
+        className="btn-primary w-full"
+        onClick={() => {
+          setMsg("Finding your location…");
+          navigator.geolocation?.getCurrentPosition(
+            (p) => {
+              setMsg("");
+              setPos({ lat: p.coords.latitude, lng: p.coords.longitude });
+            },
+            () => setMsg("Could not get your location. Allow location for this site."),
+            { enableHighAccuracy: true, timeout: 15000 },
+          );
+        }}
+      >
+        {pending ? "Saving…" : "📍 I'm at this shop now, save location"}
+      </button>
+      {msg && <p className="mt-1 text-xs text-gray-500">{msg}</p>}
+      {state?.error && <p className="mt-1 text-xs text-red-600">{state.error}</p>}
+    </form>
   );
 }

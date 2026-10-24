@@ -10,13 +10,14 @@ import Link from "next/link";
 
 export const metadata = { title: "Customers" };
 
-export default async function CustomersPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+export default async function CustomersPage({ searchParams }: { searchParams: Promise<{ q?: string; nomap?: string }> }) {
   const me = await requireMember();
   if (!can(me, "sales") && !can(me, "customers")) redirect("/");
-  const { q } = await searchParams;
+  const { q, nomap } = await searchParams;
   const supabase = await createClient();
   let query = supabase.from("v_customer_balances").select("*").order("balance", { ascending: false }).order("name");
   if (q) query = query.or(`name.ilike.%${q.replace(/[%,()]/g, "")}%,phone.ilike.%${q.replace(/[%,()]/g, "")}%`);
+  if (nomap) query = query.is("lat", null);
   const { data } = await query;
   const rows = data ?? [];
   const owed = rows.reduce((a, c) => a + Math.max(0, Number(c.balance)), 0);
@@ -24,22 +25,30 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Customers & shops" action={<Link href="/map" className="btn-primary">Open map</Link>} />
+      <PageHeader title="Customers" action={<Link href="/map" className="btn-primary">Open map</Link>} />
       <div className="grid grid-cols-2 gap-3">
         <Stat label="Total owed to Muwa Gin" value={tzs(owed)} tone={owed > 0 ? "warn" : "default"} />
         <Stat label="Customers with debt" value={debtors} hint={`${rows.length} customers`} />
       </div>
       <form className="flex gap-2">
         <input name="q" defaultValue={q} placeholder="Search name or phone" className="input" />
+        {nomap && <input type="hidden" name="nomap" value="1" />}
         <button className="btn-secondary">Search</button>
       </form>
+      <div className="flex gap-2 text-sm">
+        <Link href={q ? `/customers?q=${encodeURIComponent(q)}` : "/customers"} className={`rounded-full px-3 py-1 ${!nomap ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-700"}`}>All</Link>
+        <Link href={`/customers?nomap=1${q ? `&q=${encodeURIComponent(q)}` : ""}`} className={`rounded-full px-3 py-1 ${nomap ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-700"}`}>Not on map</Link>
+      </div>
       <Card>
         {rows.length ? (
           <List>
             {rows.map((c) => (
               <Row key={c.id} href={`/customers/${c.id}`}>
                 <div className="min-w-0">
-                  <div className="truncate font-medium">{c.name}</div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="truncate font-medium">{c.name}</span>
+                    {c.lat == null && <Badge tone="gray">not on map</Badge>}
+                  </div>
                   <div className="text-xs text-gray-500">
                     {[SHOP_TYPES[c.shop_type], c.area, c.phone].filter(Boolean).join(" · ")}
                     {c.last_purchase && ` · last ${fmtDate(c.last_purchase)}`}
@@ -52,7 +61,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
             ))}
           </List>
         ) : (
-          <Empty>No customers yet. They are added when you record a sale.</Empty>
+          <Empty>{nomap ? "Every customer is on the map." : "No customers yet. They are added when you record a sale or on the map."}</Empty>
         )}
       </Card>
       <Card title="Add customer">

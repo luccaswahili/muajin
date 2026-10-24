@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type * as Leaflet from "leaflet";
 import { ActionForm, SubmitButton } from "@/components/forms";
-import { saveCustomer } from "@/app/actions";
+import { pinCustomer, saveCustomer } from "@/app/actions";
 import { REGIONS, SHOP_STATUS, SHOP_TYPES, directionsUrl, distanceKm, fmtDistance } from "@/lib/shops";
 import { tzs } from "@/lib/format";
 
@@ -14,6 +14,7 @@ export type Shop = {
   id: string; name: string; phone: string; contact_name: string; shop_type: string; status: string;
   region: string; area: string; lat: number; lng: number; balance: number; cartons_bought: number; last_purchase: string | null;
 };
+export type CustomerPick = { id: string; name: string; phone: string; area: string; onMap: boolean };
 type Point = { lat: number; lng: number };
 
 const DAR: Point = { lat: -6.7924, lng: 39.2083 };
@@ -22,7 +23,7 @@ function dot(color: string, size = 18, ring = "#fff") {
   return `<div style="width:${size}px;height:${size}px;border-radius:9999px;background:${color};border:3px solid ${ring};box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>`;
 }
 
-export function ShopMap({ shops, canAdd, focusId }: { shops: Shop[]; canAdd: boolean; focusId?: string }) {
+export function ShopMap({ shops, customers, canAdd, focusId }: { shops: Shop[]; customers: CustomerPick[]; canAdd: boolean; focusId?: string }) {
   const router = useRouter();
   const el = useRef<HTMLDivElement>(null);
   const L = useRef<typeof Leaflet | null>(null);
@@ -40,6 +41,9 @@ export function ShopMap({ shops, canAdd, focusId }: { shops: Shop[]; canAdd: boo
   const [selected, setSelected] = useState<string | null>(focusId ?? null);
   const [showList, setShowList] = useState(false);
   const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const [mode, setMode] = useState<"new" | "existing">("new");
+  const [search, setSearch] = useState("");
+  const [picked, setPicked] = useState<CustomerPick | null>(null);
   const addingRef = useRef(false);
   useEffect(() => {
     addingRef.current = adding;
@@ -169,6 +173,9 @@ export function ShopMap({ shops, canAdd, focusId }: { shops: Shop[]; canAdd: boo
   function startAdd() {
     setSelected(null);
     setShowList(false);
+    setMode("new");
+    setSearch("");
+    setPicked(null);
     setAdding(true);
     locate((p) => {
       setPin({ lat: p.lat, lng: p.lng });
@@ -187,6 +194,15 @@ export function ShopMap({ shops, canAdd, focusId }: { shops: Shop[]; canAdd: boo
       .slice(0, 15);
   }, [visible, me]);
   const sel = shops.find((s) => s.id === selected);
+  const matches = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const digits = q.replace(/\D/g, "");
+    return customers
+      .filter((c) => !q || c.name.toLowerCase().includes(q) || (digits.length >= 3 && c.phone.replace(/\D/g, "").includes(digits)))
+      .sort((a, b) => Number(a.onMap) - Number(b.onMap))
+      .slice(0, 30);
+  }, [customers, search]);
+  const notOnMap = customers.filter((c) => !c.onMap).length;
 
   function focus(s: Shop) {
     setSelected(s.id);
@@ -222,7 +238,7 @@ export function ShopMap({ shops, canAdd, focusId }: { shops: Shop[]; canAdd: boo
       {/* Bottom actions */}
       {!adding && !sel && (
         <div className="absolute bottom-4 left-3 right-20 z-[1000] flex gap-2">
-          {canAdd && <button onClick={startAdd} className="btn-primary flex-1 shadow-lg">+ Register shop here</button>}
+          {canAdd && <button onClick={startAdd} className="btn-primary flex-1 shadow-lg">+ Add customer here</button>}
           <button onClick={() => setShowList((v) => !v)} className="btn-secondary shadow-lg">Nearby</button>
         </div>
       )}
@@ -235,10 +251,10 @@ export function ShopMap({ shops, canAdd, focusId }: { shops: Shop[]; canAdd: boo
       {showList && !adding && (
         <div className="absolute inset-x-0 bottom-0 z-[1001] max-h-[60%] overflow-y-auto rounded-t-2xl bg-white p-4 shadow-2xl">
           <div className="mb-2 flex items-center justify-between">
-            <h3 className="font-semibold">Closest shops {me ? "to you" : "to Dar centre"}</h3>
+            <h3 className="font-semibold">Closest customers {me ? "to you" : "to Dar centre"}</h3>
             <button onClick={() => setShowList(false)} className="text-sm text-gray-500">Close</button>
           </div>
-          {nearest.length === 0 && <p className="py-4 text-center text-sm text-gray-500">No shops registered yet.</p>}
+          {nearest.length === 0 && <p className="py-4 text-center text-sm text-gray-500">No customers on the map yet.</p>}
           <div className="divide-y divide-gray-100">
             {nearest.map((s) => (
               <button key={s.id} onClick={() => focus(s)} className="flex w-full items-center justify-between gap-3 py-2.5 text-left">
@@ -283,40 +299,98 @@ export function ShopMap({ shops, canAdd, focusId }: { shops: Shop[]; canAdd: boo
         </div>
       )}
 
-      {/* Register shop */}
+      {/* Add customer here */}
       {adding && (
         <div className="absolute inset-x-0 bottom-0 z-[1001] max-h-[70%] overflow-y-auto rounded-t-2xl bg-white p-4 shadow-2xl">
           <div className="mb-2 flex items-center justify-between">
-            <h3 className="font-semibold">Register a shop</h3>
+            <h3 className="font-semibold">Add customer here</h3>
             <button onClick={() => { setAdding(false); setPin(null); }} className="text-sm text-gray-500">Cancel</button>
           </div>
           <p className="mb-3 text-xs text-gray-500">
-            {locating ? "Finding your location…" : pin ? `📍 ${pin.lat.toFixed(5)}, ${pin.lng.toFixed(5)}${me ? ` (GPS ±${Math.round(me.acc)} m)` : ""}. Drag the pin or tap the map to adjust.` : "Tap the map to place the shop."}
+            {locating ? "Finding your location…" : pin ? `📍 ${pin.lat.toFixed(5)}, ${pin.lng.toFixed(5)}${me ? ` (GPS ±${Math.round(me.acc)} m)` : ""}. Drag the pin or tap the map to adjust.` : "Tap the map to place the pin."}
           </p>
-          <ActionForm
-            action={saveCustomer}
-            onSuccess={() => { setAdding(false); setPin(null); router.refresh(); }}
-          >
-            <input type="hidden" name="lat" value={pin?.lat ?? ""} />
-            <input type="hidden" name="lng" value={pin?.lng ?? ""} />
-            <input name="name" className="input" placeholder="Shop name" required />
-            <div className="grid grid-cols-2 gap-2">
-              <input name="contact_name" className="input" placeholder="Owner / contact name" />
-              <input name="phone" className="input" placeholder="Phone" inputMode="tel" />
-              <select name="shop_type" className="input" defaultValue="magi_shop">
-                {Object.entries(SHOP_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </select>
-              <select name="status" className="input" defaultValue="prospect">
-                {Object.entries(SHOP_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-              </select>
-              <input name="area" className="input" placeholder="Area / street (e.g. Sinza)" />
-              <select name="region" className="input" defaultValue="Dar es Salaam">
-                {REGIONS.map((r) => <option key={r}>{r}</option>)}
-              </select>
+          <div className="mb-3 grid gap-2">
+            <button
+              onClick={() => setMode("new")}
+              className={`rounded-xl border-2 px-3 py-2.5 text-left text-sm font-semibold ${mode === "new" ? "border-brand-600 bg-brand-50 text-brand-800" : "border-gray-200 text-gray-700"}`}
+            >
+              + Add new customer here
+            </button>
+            <button
+              onClick={() => setMode("existing")}
+              className={`rounded-xl border-2 px-3 py-2 text-left text-sm ${mode === "existing" ? "border-brand-600 bg-brand-50 font-semibold text-brand-800" : "border-gray-200 text-gray-600"}`}
+            >
+              Customer already registered? Add from list
+              {notOnMap > 0 && <span className="block text-xs font-normal text-gray-500">{notOnMap} customers are not on the map yet</span>}
+            </button>
+          </div>
+
+          {mode === "new" ? (
+            <ActionForm
+              action={saveCustomer}
+              onSuccess={() => { setAdding(false); setPin(null); router.refresh(); }}
+            >
+              <input type="hidden" name="lat" value={pin?.lat ?? ""} />
+              <input type="hidden" name="lng" value={pin?.lng ?? ""} />
+              <input name="name" className="input" placeholder="Shop / customer name" required />
+              <div className="grid grid-cols-2 gap-2">
+                <input name="contact_name" className="input" placeholder="Owner / contact name" />
+                <input name="phone" className="input" placeholder="Phone" inputMode="tel" />
+                <select name="shop_type" className="input" defaultValue="magi_shop">
+                  {Object.entries(SHOP_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+                <select name="status" className="input" defaultValue="prospect">
+                  {Object.entries(SHOP_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                </select>
+                <input name="area" className="input" placeholder="Area / street (e.g. Sinza)" />
+                <select name="region" className="input" defaultValue="Dar es Salaam">
+                  {REGIONS.map((r) => <option key={r}>{r}</option>)}
+                </select>
+              </div>
+              <input name="notes" className="input" placeholder="Notes (e.g. sells Konyagi, wants credit)" />
+              <SubmitButton>Save customer</SubmitButton>
+            </ActionForm>
+          ) : picked ? (
+            <ActionForm
+              action={pinCustomer}
+              onSuccess={() => { setAdding(false); setPin(null); setPicked(null); router.refresh(); }}
+            >
+              <input type="hidden" name="id" value={picked.id} />
+              <input type="hidden" name="lat" value={pin?.lat ?? ""} />
+              <input type="hidden" name="lng" value={pin?.lng ?? ""} />
+              <div className="rounded-xl bg-gray-50 p-3 text-sm">
+                <div className="font-semibold">{picked.name}</div>
+                <div className="text-xs text-gray-500">{[picked.phone, picked.area].filter(Boolean).join(" · ")}</div>
+                {picked.onMap && <div className="mt-1 text-xs text-amber-700">Already on the map. Saving moves their pin here.</div>}
+              </div>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setPicked(null)} className="btn-secondary">Back</button>
+                <div className="flex-1"><SubmitButton>Pin {picked.name} here</SubmitButton></div>
+              </div>
+            </ActionForm>
+          ) : (
+            <div>
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="input"
+                placeholder="Search name or phone number"
+                autoFocus
+              />
+              <div className="mt-2 divide-y divide-gray-100">
+                {matches.map((c) => (
+                  <button key={c.id} onClick={() => setPicked(c)} className="flex w-full items-center justify-between gap-3 py-2.5 text-left">
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium">{c.name}</span>
+                      <span className="block text-xs text-gray-500">{[c.phone, c.area].filter(Boolean).join(" · ") || "No phone"}</span>
+                    </span>
+                    <span className={`shrink-0 text-xs ${c.onMap ? "text-gray-400" : "font-semibold text-amber-700"}`}>{c.onMap ? "on map" : "not on map"}</span>
+                  </button>
+                ))}
+                {matches.length === 0 && <p className="py-4 text-center text-sm text-gray-500">No customer found. Use “Add new customer here”.</p>}
+              </div>
             </div>
-            <input name="notes" className="input" placeholder="Notes (e.g. sells Konyagi, wants credit)" />
-            <SubmitButton>Save shop</SubmitButton>
-          </ActionForm>
+          )}
         </div>
       )}
     </div>
