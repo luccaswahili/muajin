@@ -31,8 +31,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
     <div className="space-y-4">
       <PageHeader title="Customers" action={<Link href="/map" className="btn-primary">Open map</Link>} />
       <div className="grid grid-cols-2 gap-3">
-        <Stat label="Total owed to Muwa Gin" value={tzs(owed)} tone={owed > 0 ? "warn" : "default"} />
-        <Stat label="Customers with debt" value={debtors} hint={`${rows.length} customers`} />
+        <Stat label={me.is_agent ? "Owed to you" : "Total owed to Muwa Gin"} value={tzs(owed)} tone={owed > 0 ? "warn" : "default"} />
+        <Stat label={me.is_agent ? "Customers who owe you" : "Customers with debt"} value={debtors} hint={`${rows.length} customers`} />
       </div>
       <form className="flex gap-2">
         <input name="q" defaultValue={q} placeholder="Search name or phone" className="input" />

@@ -20,6 +20,8 @@ export type Me = {
   full_name: string;
   is_active: boolean;
   is_admin: boolean;
+  /** Sales agent: sees only their own sales and no company finances */
+  is_agent: boolean;
   role_name: string | null;
   perms: Record<string, boolean>;
 };
@@ -31,12 +33,12 @@ export const getMe = cache(async (): Promise<Me | null> => {
   if (!uid) return null;
   const { data } = await supabase
     .from("profiles")
-    .select("id, email, full_name, is_active, role:roles(name, is_admin, permissions)")
+    .select("id, email, full_name, is_active, role:roles(name, is_admin, is_agent, permissions)")
     .eq("id", uid)
     .maybeSingle();
   if (!data) return null;
   const role = (Array.isArray(data.role) ? data.role[0] : data.role) as
-    | { name: string; is_admin: boolean; permissions: Record<string, boolean> }
+    | { name: string; is_admin: boolean; is_agent: boolean; permissions: Record<string, boolean> }
     | null;
   return {
     id: data.id,
@@ -44,6 +46,7 @@ export const getMe = cache(async (): Promise<Me | null> => {
     full_name: data.full_name,
     is_active: data.is_active && !!role,
     is_admin: !!role?.is_admin,
+    is_agent: !!role?.is_agent && !role?.is_admin,
     role_name: role?.name ?? null,
     perms: role?.permissions ?? {},
   };
@@ -70,4 +73,9 @@ export async function requireAdmin() {
   const me = await requireMember();
   if (!me.is_admin) redirect("/");
   return me;
+}
+
+/** Owners and admin who can see how the sales agents are doing. */
+export function canSeeAgents(me: Me) {
+  return !me.is_agent && can(me, "reports");
 }

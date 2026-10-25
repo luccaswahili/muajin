@@ -6,7 +6,7 @@ import { fmtDate, monthStart, qty, today, tzs } from "@/lib/format";
 
 export const metadata = { title: "Sales" };
 
-export default async function SalesPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string; unpaid?: string }> }) {
+export default async function SalesPage({ searchParams }: { searchParams: Promise<{ from?: string; to?: string; unpaid?: string; seller?: string }> }) {
   await requirePerm("sales");
   const sp = await searchParams;
   const from = sp.from || monthStart();
@@ -14,6 +14,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
   const supabase = await createClient();
   let q = supabase.from("v_sales").select("*").gte("date", from).lte("date", to).order("date", { ascending: false }).order("created_at", { ascending: false });
   if (sp.unpaid) q = q.gt("balance", 0);
+  if (sp.seller) q = q.eq("created_by", sp.seller);
   const { data: sales } = await q;
   const rows = sales ?? [];
   const total = rows.reduce((a, s) => a + Number(s.total), 0);
@@ -28,8 +29,15 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
         <label className="text-xs">From<input type="date" name="from" defaultValue={from} className="input mt-1 !py-1.5" /></label>
         <label className="text-xs">To<input type="date" name="to" defaultValue={to} className="input mt-1 !py-1.5" /></label>
         <label className="flex items-center gap-1 pb-2 text-sm"><input type="checkbox" name="unpaid" defaultChecked={!!sp.unpaid} /> Unpaid only</label>
+        {sp.seller && <input type="hidden" name="seller" value={sp.seller} />}
         <button className="btn-secondary !py-1.5">Show</button>
       </form>
+      {sp.seller && (
+        <p className="text-sm text-gray-600">
+          Showing sales by <b>{rows[0]?.created_by_name ?? "this person"}</b> ·{" "}
+          <Link href={`/sales?from=${from}&to=${to}`} className="text-brand-600">show everyone</Link>
+        </p>
+      )}
       <div className="grid grid-cols-3 gap-3">
         <Stat label="Total" value={tzs(total)} />
         <Stat label="Sold" value={qty(ctn, btl)} />

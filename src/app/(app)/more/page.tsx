@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { can, requireMember } from "@/lib/auth";
+import { can, requireMember, canSeeAgents } from "@/lib/auth";
 import { Card, Field } from "@/components/ui";
 import { ActionForm, SubmitButton } from "@/components/forms";
 import { signOut, updateMyName } from "@/app/actions";
@@ -13,11 +13,12 @@ export default async function MorePage() {
   const links = [
     { href: "/sales", label: "Sales", show: can(me, "sales") },
     { href: "/map", label: "Shop map", show: can(me, "sales") || can(me, "customers") },
-    { href: "/customers", label: "Customers & debts", show: can(me, "sales") || can(me, "customers") },
+    { href: "/customers", label: "Customers", show: can(me, "sales") || can(me, "customers") },
     { href: "/production", label: "Production", show: can(me, "production") },
     { href: "/expenses", label: "Expenses", show: can(me, "expenses") },
     { href: "/money", label: "Bank & cash", show: can(me, "bank") },
-    { href: "/stock", label: "Stock", show: true },
+    { href: "/stock", label: "Stock", show: !me.is_agent },
+    { href: "/agents", label: "Sales agents", show: canSeeAgents(me) },
     { href: "/reports", label: "Reports & owner shares", show: can(me, "reports") },
     { href: "/activity", label: "Activity log", show: can(me, "activity") },
     { href: "/admin", label: "Admin settings", show: me.is_admin },

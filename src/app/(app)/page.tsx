@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { can, requireMember } from "@/lib/auth";
+import { can, canSeeAgents, requireMember, type Me } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Badge, Card, Empty, List, Row, Stat } from "@/components/ui";
 import { fmtDate, monthStart, qty, today, tzs } from "@/lib/format";
 
 export default async function Dashboard() {
   const me = await requireMember();
+  if (me.is_agent) return <AgentHome me={me} />;
   const supabase = await createClient();
   const t = today();
   const m = monthStart();
@@ -128,7 +129,70 @@ export default async function Dashboard() {
         {can(me, "production") && <Link href="/production/new" className="btn-secondary">Record production</Link>}
         {can(me, "expenses") && <Link href="/expenses/new" className="btn-secondary">Add expense</Link>}
         {can(me, "bank") && <Link href="/money#deposit" className="btn-secondary">Bank deposit</Link>}
+        {canSeeAgents(me) && <Link href="/agents" className="btn-secondary">Sales agents</Link>}
       </div>
+    </div>
+  );
+}
+
+/** Home for sales agents: only their own numbers (the database hides everyone else's sales). */
+async function AgentHome({ me }: { me: Me }) {
+  const supabase = await createClient();
+  const t = today();
+  const m = monthStart();
+  const [monthSales, owed, cash, added, recent] = await Promise.all([
+    supabase.from("sales").select("date, total, cartons").gte("date", m),
+    supabase.from("v_customer_balances").select("balance").gt("balance", 0),
+    supabase.rpc("my_cash_in_hand"),
+    supabase.from("customers").select("id", { count: "exact", head: true }).eq("created_by", me.id).gte("created_at", m),
+    supabase.from("v_sales").select("*").order("created_at", { ascending: false }).limit(5),
+  ]);
+  const rows = monthSales.data ?? [];
+  const todayRows = rows.filter((r) => r.date === t);
+  const sum = (list: { [k: string]: unknown }[], k: string) => list.reduce((a, r) => a + Number(r[k] ?? 0), 0);
+  const owedTotal = sum(owed.data ?? [], "balance");
+  const cashInHand = Number(cash.data ?? 0);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm text-gray-500">{fmtDate(t)}</p>
+          <h1 className="text-2xl font-bold text-brand-900">Hello {me.full_name.split(" ")[0] || "there"}</h1>
+        </div>
+        <Link href="/sales/new" className="btn-primary">+ New sale</Link>
+      </div>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <Stat tone="brand" label="My sales today" value={tzs(sum(todayRows, "total"))} hint={`${sum(todayRows, "cartons")} cartons`} href="/sales" />
+        <Stat label="My sales this month" value={tzs(sum(rows, "total"))} hint={`${sum(rows, "cartons")} cartons · ${rows.length} sales`} href="/sales" />
+        <Stat label="Customers owe me" value={tzs(owedTotal)} href="/customers" tone={owedTotal > 0 ? "warn" : "default"} />
+        <Stat label="Cash I am holding" value={tzs(cashInHand)} hint="Hand it to an owner" tone={cashInHand > 0 ? "warn" : "default"} />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Link href="/map" className="btn-secondary">📍 Add customer on map</Link>
+        <Link href="/customers?nomap=1" className="btn-secondary">Customers not on map</Link>
+      </div>
+      <Card title="My latest sales" action={<Link href="/sales" className="text-sm text-brand-600">All</Link>}>
+        {recent.data?.length ? (
+          <List>
+            {recent.data.map((s) => (
+              <Row key={s.id} href={`/sales/${s.id}`}>
+                <div className="min-w-0">
+                  <div className="truncate font-medium">{s.customer_name ?? "Walk-in"} · {qty(s.cartons, s.bottles)}</div>
+                  <div className="text-xs text-gray-500">{s.product_name} · {fmtDate(s.date)}</div>
+                </div>
+                <div className="text-right">
+                  <div className="font-semibold tabular-nums">{tzs(s.total)}</div>
+                  {Number(s.balance) > 0 && <Badge tone="amber">owes {tzs(s.balance)}</Badge>}
+                </div>
+              </Row>
+            ))}
+          </List>
+        ) : (
+          <Empty>No sales yet. Tap “+ New sale” to record your first one.</Empty>
+        )}
+      </Card>
+      <p className="text-center text-xs text-gray-500">{added.count ?? 0} customers added by you this month</p>
     </div>
   );
 }

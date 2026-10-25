@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { can, requireMember } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Badge, Card, Field, List, PageHeader, Row } from "@/components/ui";
@@ -18,6 +19,7 @@ const MATERIAL_REASON: Record<string, string> = {
 
 export default async function StockPage() {
   const me = await requireMember();
+  if (me.is_agent) redirect("/");
   const supabase = await createClient();
   const [{ data: products }, { data: materials }, { data: moves }, { data: matMoves }] = await Promise.all([
     supabase.from("v_product_stock").select("*").eq("is_active", true).order("sort"),

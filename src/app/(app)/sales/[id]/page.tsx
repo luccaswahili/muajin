@@ -8,7 +8,7 @@ import { deleteRecord } from "@/app/actions";
 import { METHOD_LABEL, fmtDate, fmtDateTime, qty, tzs } from "@/lib/format";
 
 export default async function SaleDetail({ params }: { params: Promise<{ id: string }> }) {
-  await requirePerm("sales");
+  const me = await requirePerm("sales");
   const { id } = await params;
   const supabase = await createClient();
   const { data: s } = await supabase.from("v_sales").select("*").eq("id", id).maybeSingle();
@@ -53,7 +53,7 @@ export default async function SaleDetail({ params }: { params: Promise<{ id: str
         </List>
         {!payments?.length && <p className="text-sm text-gray-500">No payment yet.</p>}
       </Card>
-      <div className="flex justify-end">
+      {!me.is_agent && <div className="flex justify-end">
         <InlineAction
           action={deleteRecord}
           fields={{ table: "sales", id: s.id, redirect: "/sales" }}
@@ -61,7 +61,7 @@ export default async function SaleDetail({ params }: { params: Promise<{ id: str
           className="btn-danger"
           confirm="Delete this sale? The stock goes back and its payments are removed. This is recorded in the activity log."
         />
-      </div>
+      </div>}
     </div>
   );
 }

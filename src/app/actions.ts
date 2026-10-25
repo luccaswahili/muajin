@@ -196,11 +196,9 @@ export async function pinCustomer(_: ActionState, fd: FormData): Promise<ActionS
   if (lat === null || lng === null) return { error: "Location not found yet" };
   const dupe = await duplicateWarning(fd, { lat, lng, exceptId: id });
   if (dupe) return dupe;
-  const supabase = await createClient();
-  const { data, error } = await supabase.from("customers").update({ lat, lng }).eq("id", id).select("name").maybeSingle();
+  const { data, error } = await rpc("pin_customer_location", { p_id: id, p_lat: lat, p_lng: lng });
   if (error) return fail(error);
-  if (!data) return { error: "Customer not found" };
-  return done(`${data.name} is now on the map`);
+  return done(`${data} is now on the map`);
 }
 
 // ---------------------------------------------------------------- production
@@ -415,7 +413,7 @@ export async function saveRole(_: ActionState, fd: FormData): Promise<ActionStat
   const supabase = await createClient();
   const id = str(fd, "id");
   const permissions = Object.fromEntries(PERMS.map((p) => [p.key, bool(fd, `perm_${p.key}`)]));
-  const row = { name: str(fd, "name"), permissions };
+  const row = { name: str(fd, "name"), permissions, is_agent: bool(fd, "is_agent") };
   if (!row.name) return { error: "Name is required" };
   const { error } = id ? await supabase.from("roles").update(row).eq("id", id) : await supabase.from("roles").insert(row);
   return error ? fail(error) : done(id ? "Role saved" : "Role added");

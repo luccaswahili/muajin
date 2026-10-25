@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { can, requireMember } from "@/lib/auth";
+import { can, canSeeAgents, requireMember } from "@/lib/auth";
 import { BottomNav, SideNav } from "@/components/nav";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -21,7 +21,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     { href: "/production", label: "Production", icon: "", show: can(me, "production") },
     { href: "/expenses", label: "Expenses", icon: "", show: can(me, "expenses") },
     { href: "/money", label: "Bank & cash", icon: "", show: can(me, "bank") },
-    { href: "/stock", label: "Stock", icon: "", show: true },
+    { href: "/stock", label: "Stock", icon: "", show: !me.is_agent },
+    { href: "/agents", label: "Sales agents", icon: "", show: canSeeAgents(me) },
     { href: "/reports", label: "Reports", icon: "", show: can(me, "reports") },
     { href: "/activity", label: "Activity log", icon: "", show: can(me, "activity") },
     { href: "/admin", label: "Admin", icon: "", show: me.is_admin },

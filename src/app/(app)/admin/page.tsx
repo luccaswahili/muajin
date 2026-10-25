@@ -47,7 +47,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
   );
 }
 
-type Role = { id: string; name: string; is_admin: boolean; permissions: Record<string, boolean> };
+type Role = { id: string; name: string; is_admin: boolean; is_agent?: boolean; permissions: Record<string, boolean> };
 
 async function Members({ roles, meId }: { roles: Role[]; meId: string }) {
   const supabase = await createClient();
@@ -257,6 +257,9 @@ function RoleForm({ r }: { r?: Role }) {
             <input type="checkbox" name={`perm_${p.key}`} defaultChecked={!!r?.permissions?.[p.key]} /> {p.label}
           </label>
         ))}
+        <label className="col-span-2 flex items-center gap-2 text-sm sm:col-span-4">
+          <input type="checkbox" name="is_agent" defaultChecked={!!r?.is_agent} /> Sales agent: sees only own sales, no finances, cannot edit
+        </label>
       </div>
     )}
     <SubmitButton className="btn-secondary w-full !py-1.5">{r ? "Save role" : "Add role"}</SubmitButton>
