@@ -14,3 +14,17 @@ export async function expenseFormOptions() {
     productions: (productions ?? []).map((p) => ({ id: p.id, label: `${fmtDate(p.date)} · ${p.product_name} · ${p.cartons_produced} ctn` })),
   };
 }
+
+/** Active members with a sales-agent role. */
+export async function salesAgents() {
+  const supabase = await createClient();
+  const { data: roles } = await supabase.from("roles").select("id").eq("is_agent", true);
+  if (!roles?.length) return [];
+  const { data } = await supabase
+    .from("profiles")
+    .select("id, full_name, email")
+    .in("role_id", roles.map((r) => r.id))
+    .eq("is_active", true)
+    .order("full_name");
+  return (data ?? []).map((p) => ({ id: p.id, name: p.full_name || p.email }));
+}

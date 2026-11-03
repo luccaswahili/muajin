@@ -34,6 +34,7 @@ export default async function SaleDetail({ params }: { params: Promise<{ id: str
           <dt className="text-gray-500">Balance</dt>
           <dd>{Number(s.balance) > 0 ? <Badge tone="amber">{tzs(s.balance)}</Badge> : <Badge tone="green">Fully paid</Badge>}</dd>
           <dt className="text-gray-500">Recorded by</dt><dd>{s.created_by_name} · {fmtDateTime(s.created_at)}</dd>
+          {s.agent_id && <><dt className="text-gray-500">Sold by agent</dt><dd>{s.seller_name} (from their stock)</dd></>}
           {s.notes && (<><dt className="text-gray-500">Note</dt><dd>{s.notes}</dd></>)}
         </dl>
         {Number(s.balance) > 0 && s.customer_id && (

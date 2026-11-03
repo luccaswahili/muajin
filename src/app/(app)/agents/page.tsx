@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { canSeeAgents, requireMember } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Badge, Card, Empty, PageHeader, Stat } from "@/components/ui";
+import { AgentStockForm } from "@/components/release-form";
 import { fmtDate, monthStart, num, today, tzs } from "@/lib/format";
 
 export const metadata = { title: "Sales agents" };
@@ -21,7 +22,13 @@ export default async function AgentsPage({ searchParams }: { searchParams: Promi
   const from = sp.from || monthStart();
   const to = sp.to || today();
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("agent_stats", { p_from: from, p_to: to });
+  const [{ data, error }, { data: holds }, { data: products }] = await Promise.all([
+    supabase.rpc("agent_stats", { p_from: from, p_to: to }),
+    supabase.from("v_agent_hold").select("*").gt("bottles", 0).order("sort"),
+    supabase.from("products").select("id, name, bottles_per_carton").eq("is_active", true).order("sort"),
+  ]);
+  const prods = (products ?? []).map((p) => ({ product_id: p.id, name: p.name, bottles_per_carton: p.bottles_per_carton }));
+  const holdCartons = (holds ?? []).reduce((a, h) => a + h.cartons, 0);
   const agents = (data ?? []) as AgentRow[];
   const total = (k: keyof AgentRow) => agents.reduce((a, r) => a + Number(r[k] ?? 0), 0);
   const best = Math.max(1, ...agents.map((a) => Number(a.cartons)));
@@ -36,8 +43,12 @@ export default async function AgentsPage({ searchParams }: { searchParams: Promi
       </form>
       {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error.message}</p>}
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="flex justify-end">
+        <Link href="/sales/new" className="btn-primary">+ Release to an agent</Link>
+      </div>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <Stat tone="brand" label="Agents' sales" value={tzs(total("sales_total"))} hint={`${num(total("cartons"))} cartons · ${num(total("sales_count"))} sales`} />
+        <Stat label="Cartons with agents" value={num(holdCartons)} hint="Released, not sold yet" />
         <Stat label="Collected" value={tzs(total("collected"))} hint="Payments they received" />
         <Stat label="Customers owe agents" value={tzs(total("owed_now"))} hint="All time, still unpaid" tone={total("owed_now") > 0 ? "warn" : "default"} />
         <Stat label="Cash agents hold" value={tzs(total("cash_in_hand"))} hint="Not yet handed over" tone={total("cash_in_hand") > 0 ? "warn" : "default"} href="/money" />
@@ -74,6 +85,27 @@ export default async function AgentsPage({ searchParams }: { searchParams: Promi
                 <div><dt className="text-xs text-gray-500">All customers</dt><dd className="tabular-nums">{num(a.customers_total)}</dd></div>
                 <div><dt className="text-xs text-gray-500">On the map</dt><dd className="tabular-nums">{num(a.customers_on_map)} / {num(a.customers_total)}</dd></div>
               </dl>
+              {(() => {
+                const mine = (holds ?? []).filter((h) => h.agent_id === a.profile_id);
+                return (
+                  <div className="mt-3 rounded-xl bg-gray-50 p-2 text-sm">
+                    <div className="text-xs text-gray-500">Holding now</div>
+                    {mine.length ? (
+                      <div className="font-semibold">{mine.map((h) => `${h.product_name.replace(/^Muwa\s+/, "")}: ${h.cartons} ctn${h.loose_bottles ? ` + ${h.loose_bottles} btl` : ""}`).join(" · ")}</div>
+                    ) : (
+                      <div className="text-gray-500">Nothing</div>
+                    )}
+                    {mine.length > 0 && (
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-xs font-medium text-brand-600">Agent brought gin back</summary>
+                        <div className="mt-2">
+                          <AgentStockForm agents={[{ id: a.profile_id, name: a.full_name }]} agentId={a.profile_id} products={prods.filter((p) => mine.some((h) => h.product_id === p.product_id))} date={today()} direction="return" />
+                        </div>
+                      </details>
+                    )}
+                  </div>
+                );
+              })()}
               <div className="mt-3 flex flex-wrap gap-2 text-sm">
                 <Link href={`/sales?seller=${a.profile_id}&from=${from}&to=${to}`} className="btn-secondary !py-1.5">See sales</Link>
                 <Link href={`/sales?seller=${a.profile_id}&from=2020-01-01&to=${today()}&unpaid=1`} className="btn-secondary !py-1.5">Unpaid sales</Link>

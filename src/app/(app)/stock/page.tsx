@@ -154,14 +154,14 @@ export default async function StockPage() {
               return (
                 <Row key={m.id}>
                   <div>
-                    <div className="text-sm">{PRODUCT_REASON[m.reason]} · {p?.name}</div>
+                    <div className="text-sm">{m.agent_id ? (m.bottles < 0 ? "Released to agent" : "Returned by agent") : PRODUCT_REASON[m.reason]} · {p?.name}</div>
                     <div className="text-xs text-gray-500">{fmtDate(m.date)}{m.notes ? ` · ${m.notes}` : ""}</div>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className={`tabular-nums ${m.bottles < 0 ? "text-red-600" : "text-emerald-700"}`}>
                       {m.bottles < 0 ? "−" : "+"}{Math.floor(abs / per) ? `${Math.floor(abs / per)} ctn ` : ""}{abs % per ? `${abs % per} btl` : ""}
                     </span>
-                    {me.is_admin && <InlineAction action={deleteRecord} fields={{ table: "product_movements", id: m.id }} label="×" className="text-red-600" confirm="Undo this correction?" />}
+                    {me.is_admin && !m.agent_id && <InlineAction action={deleteRecord} fields={{ table: "product_movements", id: m.id }} label="×" className="text-red-600" confirm="Undo this correction?" />}
                   </div>
                 </Row>
               );

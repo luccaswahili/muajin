@@ -11,7 +11,7 @@ export default async function Dashboard() {
   const t = today();
   const m = monthStart();
 
-  const [fin, stock, materials, todaySales, monthSales, monthExp, pending, recent, holders] = await Promise.all([
+  const [fin, stock, materials, todaySales, monthSales, monthExp, pending, recent, holders, agentHold] = await Promise.all([
     supabase.from("v_finance_summary").select("*").single(),
     supabase.from("v_product_stock").select("*").eq("is_active", true).order("sort"),
     supabase.from("v_material_stock").select("*").eq("is_active", true),
@@ -21,6 +21,7 @@ export default async function Dashboard() {
     supabase.from("v_deposits").select("*").eq("status", "pending").order("date"),
     supabase.from("v_sales").select("*").order("created_at", { ascending: false }).limit(5),
     supabase.from("v_cash_holders").select("*").neq("cash_in_hand", 0),
+    supabase.from("v_agent_hold").select("agent_name, cartons, loose_bottles").gt("bottles", 0),
   ]);
 
   const f = fin.data ?? { bank_balance: 0, cash_in_hand: 0, pending_deposits: 0, pending_deposit_count: 0, receivables: 0 };
@@ -43,18 +44,24 @@ export default async function Dashboard() {
           <h1 className="text-2xl font-bold text-brand-900">Hello {me.full_name.split(" ")[0] || "there"}</h1>
         </div>
         {can(me, "sales") && (
-          <Link href="/sales/new" className="btn-primary">+ New sale</Link>
+          <Link href="/sales/new" className="btn-primary">+ New release</Link>
         )}
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Stat tone="brand" label="Bank balance" value={tzs(f.bank_balance)} hint="Confirmed in the official account" href="/money" />
         <Stat label="Cash not banked" value={tzs(f.cash_in_hand)} hint={`${tzs(f.pending_deposits)} waiting confirmation`} href="/money" tone={Number(f.cash_in_hand) > 0 ? "warn" : "default"} />
-        <Stat label="Cartons in stock" value={totalCartons} hint={(stock.data ?? []).map((s) => `${s.name.replace(/^Muwa\s+/, "")}: ${s.cartons}`).join(" · ")} href="/stock" />
+        <Stat label="Cartons in warehouse" value={totalCartons} hint={(stock.data ?? []).map((s) => `${s.name.replace(/^Muwa\s+/, "")}: ${s.cartons}`).join(" · ")} href="/stock" />
         <Stat label="Customers owe" value={tzs(f.receivables)} href="/customers" tone={Number(f.receivables) > 0 ? "warn" : "default"} />
         <Stat label="Sales today" value={tzs(todayTotal)} hint={`${todayCtn} cartons`} href="/sales" />
         <Stat label="Sales this month" value={tzs(monthTotal)} hint={`${monthCtn} cartons`} href="/reports" />
         <Stat label="Expenses this month" value={tzs(monthExpenses)} href="/expenses" />
+        <Stat
+          label="Cartons with agents"
+          value={(agentHold.data ?? []).reduce((a, h) => a + h.cartons, 0)}
+          hint={(agentHold.data ?? []).map((h) => `${h.agent_name}: ${h.cartons}`).join(" · ") || "Nothing released to agents"}
+          href={canSeeAgents(me) ? "/agents" : undefined}
+        />
       </div>
 
       {can(me, "bank") && needsMyReview.length > 0 && (
@@ -95,7 +102,7 @@ export default async function Dashboard() {
                 <Row key={s.id} href={`/sales/${s.id}`}>
                   <div className="min-w-0">
                     <div className="truncate font-medium">{s.customer_name ?? "Walk-in"} · {qty(s.cartons, s.bottles)}</div>
-                    <div className="text-xs text-gray-500">{s.product_name} · {fmtDate(s.date)} · {s.created_by_name}</div>
+                    <div className="text-xs text-gray-500">{s.product_name} · {fmtDate(s.date)} · {s.seller_name}</div>
                   </div>
                   <div className="text-right">
                     <div className="font-semibold tabular-nums">{tzs(s.total)}</div>
@@ -125,7 +132,7 @@ export default async function Dashboard() {
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {can(me, "sales") && <Link href="/sales/new" className="btn-secondary">Record sale</Link>}
+        {can(me, "sales") && <Link href="/sales/new" className="btn-secondary">Release / sale</Link>}
         {can(me, "production") && <Link href="/production/new" className="btn-secondary">Record production</Link>}
         {can(me, "expenses") && <Link href="/expenses/new" className="btn-secondary">Add expense</Link>}
         {can(me, "bank") && <Link href="/money#deposit" className="btn-secondary">Bank deposit</Link>}
@@ -140,12 +147,13 @@ async function AgentHome({ me }: { me: Me }) {
   const supabase = await createClient();
   const t = today();
   const m = monthStart();
-  const [monthSales, owed, cash, added, recent] = await Promise.all([
+  const [monthSales, owed, cash, added, recent, hold] = await Promise.all([
     supabase.from("sales").select("date, total, cartons").gte("date", m),
     supabase.from("v_customer_balances").select("balance").gt("balance", 0),
     supabase.rpc("my_cash_in_hand"),
     supabase.from("customers").select("id", { count: "exact", head: true }).eq("created_by", me.id).gte("created_at", m),
     supabase.from("v_sales").select("*").order("created_at", { ascending: false }).limit(5),
+    supabase.from("v_agent_hold").select("*").eq("agent_id", me.id).gt("bottles", 0).order("sort"),
   ]);
   const rows = monthSales.data ?? [];
   const todayRows = rows.filter((r) => r.date === t);
@@ -168,6 +176,20 @@ async function AgentHome({ me }: { me: Me }) {
         <Stat label="Customers owe me" value={tzs(owedTotal)} href="/customers" tone={owedTotal > 0 ? "warn" : "default"} />
         <Stat label="Cash I am holding" value={tzs(cashInHand)} hint="Hand it to an owner" tone={cashInHand > 0 ? "warn" : "default"} />
       </div>
+      <Card title="My stock (agent hold)">
+        {hold.data?.length ? (
+          <List>
+            {hold.data.map((h) => (
+              <Row key={h.product_id}>
+                <span>{h.product_name}</span>
+                <span className="font-semibold tabular-nums">{h.cartons} ctn{h.loose_bottles ? ` + ${h.loose_bottles} btl` : ""}</span>
+              </Row>
+            ))}
+          </List>
+        ) : (
+          <Empty>You are not holding any gin. Ask an owner to release some to you.</Empty>
+        )}
+      </Card>
       <div className="grid grid-cols-2 gap-3">
         <Link href="/map" className="btn-secondary">📍 Add customer on map</Link>
         <Link href="/customers?nomap=1" className="btn-secondary">Customers not on map</Link>

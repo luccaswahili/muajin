@@ -6,11 +6,19 @@ import { ActionForm, SubmitButton } from "@/components/forms";
 import { createSale, searchCustomers, type CustomerHit } from "@/app/actions";
 import { tzs } from "@/lib/format";
 
-type Product = { product_id: string; name: string; price_carton: number; price_bottle: number; bottles_per_carton: number; cartons: number; loose_bottles: number };
+type Product = { product_id: string; name: string; price_carton: number; price_bottle: number; bottles_per_carton: number };
 type Customer = { id: string; name: string; phone: string; balance: number };
+/** Where the gin comes from: the warehouse (id "") or an agent's hold (the agent's profile id). */
+export type StockSource = { id: string; label: string; bottles: Record<string, number> };
 
-export function SaleForm({ products, customers, date, customerId = "" }: { products: Product[]; customers: Customer[]; date: string; customerId?: string }) {
-  const [productId, setProductId] = useState(products[0]?.product_id ?? "");
+export function SaleForm({ products, customers, date, customerId = "", sources }: {
+  products: Product[]; customers: Customer[]; date: string; customerId?: string; sources: StockSource[];
+}) {
+  const [sourceId, setSourceId] = useState(sources[0]?.id ?? "");
+  const source = sources.find((x) => x.id === sourceId) ?? sources[0];
+  const [productId, setProductId] = useState(
+    products.find((p) => (sources[0]?.bottles[p.product_id] ?? 0) > 0)?.product_id ?? products[0]?.product_id ?? "",
+  );
   const product = products.find((p) => p.product_id === productId);
   const [cartons, setCartons] = useState("1");
   const [bottles, setBottles] = useState("");
@@ -29,6 +37,15 @@ export function SaleForm({ products, customers, date, customerId = "" }: { produ
   return (
     <ActionForm action={createSale} className="space-y-4">
       <input type="hidden" name="amount_paid" value={amountPaid} />
+      <input type="hidden" name="from_agent" value={source?.id ?? ""} />
+      {sources.length > 1 && (
+        <label className="block">
+          <span className="mb-1 block text-sm font-medium">Sell from</span>
+          <select className="input" value={sourceId} onChange={(e) => setSourceId(e.target.value)}>
+            {sources.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+          </select>
+        </label>
+      )}
       <div className="grid grid-cols-2 gap-2">
         {products.map((p) => (
           <button
@@ -42,7 +59,7 @@ export function SaleForm({ products, customers, date, customerId = "" }: { produ
             className={`rounded-xl border p-3 text-left ${p.product_id === productId ? "border-brand-500 bg-brand-50 ring-2 ring-brand-100" : "border-gray-200 bg-white"}`}
           >
             <div className="text-sm font-semibold">{p.name}</div>
-            <div className="text-xs text-gray-500">In stock: {p.cartons} ctn{p.loose_bottles ? ` + ${p.loose_bottles} btl` : ""}</div>
+            <div className="text-xs text-gray-500">{stockLabel(source?.bottles[p.product_id] ?? 0, p.bottles_per_carton)}</div>
           </button>
         ))}
       </div>
@@ -215,4 +232,11 @@ function CustomerPicker({ customers, value, onChange }: { customers: Customer[];
       </div>
     </div>
   );
+}
+
+function stockLabel(bottles: number, perCarton: number) {
+  if (bottles <= 0) return "None in stock";
+  const ctn = Math.floor(bottles / perCarton);
+  const loose = bottles % perCarton;
+  return `In stock: ${ctn} ctn${loose ? ` + ${loose} btl` : ""}`;
 }

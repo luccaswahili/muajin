@@ -14,7 +14,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
   const supabase = await createClient();
   let q = supabase.from("v_sales").select("*").gte("date", from).lte("date", to).order("date", { ascending: false }).order("created_at", { ascending: false });
   if (sp.unpaid) q = q.gt("balance", 0);
-  if (sp.seller) q = q.eq("created_by", sp.seller);
+  if (sp.seller) q = q.eq("seller_id", sp.seller);
   const { data: sales } = await q;
   const rows = sales ?? [];
   const total = rows.reduce((a, s) => a + Number(s.total), 0);
@@ -34,7 +34,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
       </form>
       {sp.seller && (
         <p className="text-sm text-gray-600">
-          Showing sales by <b>{rows[0]?.created_by_name ?? "this person"}</b> ·{" "}
+          Showing sales by <b>{rows[0]?.seller_name ?? "this person"}</b> ·{" "}
           <Link href={`/sales?from=${from}&to=${to}`} className="text-brand-600">show everyone</Link>
         </p>
       )}
@@ -50,7 +50,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
               <Row key={s.id} href={`/sales/${s.id}`}>
                 <div className="min-w-0">
                   <div className="truncate font-medium">{s.customer_name ?? "Walk-in"} · {qty(s.cartons, s.bottles)}</div>
-                  <div className="text-xs text-gray-500">{s.product_name} · {fmtDate(s.date)} · by {s.created_by_name}</div>
+                  <div className="text-xs text-gray-500">{s.product_name} · {fmtDate(s.date)} · by {s.seller_name}{s.agent_id ? " (agent stock)" : ""}</div>
                 </div>
                 <div className="shrink-0 text-right">
                   <div className="font-semibold tabular-nums">{tzs(s.total)}</div>
