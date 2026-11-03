@@ -107,8 +107,23 @@ export async function createSale(_: ActionState, fd: FormData): Promise<ActionSt
     p_discount: numOr(fd, "discount", 0),
     p_date: str(fd, "date"),
     p_notes: str(fd, "notes"),
+    p_from_agent: optStr(fd, "from_agent"),
   });
   return error ? fail(error) : done("Sale saved");
+}
+
+/** Release gin from the warehouse to an agent, or take back what they did not sell. */
+export async function moveAgentStock(_: ActionState, fd: FormData): Promise<ActionState> {
+  const back = str(fd, "direction") === "return";
+  const { error } = await rpc(back ? "return_from_agent" : "release_to_agent", {
+    p_agent: str(fd, "agent_id"),
+    p_product_id: str(fd, "product_id"),
+    p_cartons: numOr(fd, "cartons", 0),
+    p_bottles: numOr(fd, "bottles", 0),
+    p_date: str(fd, "date"),
+    p_notes: str(fd, "notes"),
+  });
+  return error ? fail(error) : done(back ? "Return recorded" : "Released to agent");
 }
 
 export async function recordCustomerPayment(_: ActionState, fd: FormData): Promise<ActionState> {
