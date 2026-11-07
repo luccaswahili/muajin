@@ -17,13 +17,12 @@ update public.materials set usage = 'per_bottle', usage_qty = 1
   where name ilike 'bottle%' or name ilike '%cap%' or name ilike '%label%' or name ilike '%stamp%';
 update public.materials set usage = 'per_carton', usage_qty = 1 where name ilike '%box%' or name ilike 'carton%';
 
-drop view public.v_material_stock;
-alter table public.materials drop column per_bottle, drop column per_carton;
-
-create view public.v_material_stock with (security_invoker = true) as
+-- As applied on the live DB: per_bottle/per_carton columns were kept (no longer used by the app).
+create or replace view public.v_material_stock with (security_invoker = true) as
 select mt.id as material_id, mt.name, mt.unit, mt.unit_cost, mt.low_stock_level, mt.is_active, mt.sort,
-  mt.usage, mt.usage_qty, mt.product_id,
-  coalesce(sum(m.qty), 0) as qty
+  mt.per_bottle, mt.per_carton,
+  coalesce(sum(m.qty), 0) as qty,
+  mt.usage, mt.usage_qty, mt.product_id
 from materials mt left join material_movements m on m.material_id = mt.id
 group by mt.id;
 
