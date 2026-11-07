@@ -1,4 +1,4 @@
--- Run on the NEW self-hosted Supabase AFTER migrations 0001..0012 (as postgres/supabase_admin).
+-- Run on the NEW self-hosted Supabase AFTER migrations 0001..0013 (as postgres/supabase_admin).
 -- Replace PASTE_DUMP_JSON_HERE with the full dump text from step 1.
 -- Clears the seed rows the migrations created in public tables (new DB only), then loads everything.
 begin;
