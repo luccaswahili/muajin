@@ -1,0 +1,24 @@
+# Deploys muwapanel.com on Coolify every time the selfhost branch changes.
+# Needs two repository secrets (GitHub > Settings > Secrets and variables > Actions):
+#   COOLIFY_WEBHOOK  the app's Deploy Webhook URL from Coolify (app > Webhooks)
+#   COOLIFY_TOKEN    a Coolify API token with deploy permission (Keys & Tokens > API tokens)
+name: Deploy to Coolify
+
+on:
+  push:
+    branches: [selfhost]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Tell Coolify to deploy
+        env:
+          COOLIFY_WEBHOOK: ${{ secrets.COOLIFY_WEBHOOK }}
+          COOLIFY_TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+        run: |
+          if [ -z "$COOLIFY_WEBHOOK" ] || [ -z "$COOLIFY_TOKEN" ]; then
+            echo "COOLIFY_WEBHOOK or COOLIFY_TOKEN secret is missing"; exit 1
+          fi
+          curl -fsS --retry 3 -H "Authorization: Bearer $COOLIFY_TOKEN" "$COOLIFY_WEBHOOK"
