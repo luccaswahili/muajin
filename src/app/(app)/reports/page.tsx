@@ -42,12 +42,13 @@ export default async function ReportsPage() {
     if (c?.area) r.areas.set(c.area, (r.areas.get(c.area) ?? 0) + sale.cartons);
     regions.set(key, r);
   });
+  const buyers = new Set((byProduct ?? []).map((x) => x.customer_id).filter(Boolean));
   const shopCounts = new Map<string, { all: number; active: number }>();
   (shopRows ?? []).forEach((c) => {
     const k = c.region || "No region";
     const v = shopCounts.get(k) ?? { all: 0, active: 0 };
     v.all += 1;
-    if (c.status === "active") v.active += 1;
+    if (c.status === "active" || buyers.has(c.id)) v.active += 1;
     shopCounts.set(k, v);
   });
   const maxMonth = Math.max(1, ...rows.map((r) => Math.max(Number(r.sales_total), Number(r.expenses_total))));

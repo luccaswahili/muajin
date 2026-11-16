@@ -109,7 +109,10 @@ export async function createSale(_: ActionState, fd: FormData): Promise<ActionSt
     p_notes: str(fd, "notes"),
     p_from_agent: optStr(fd, "from_agent"),
   });
-  return error ? fail(error) : done("Sale saved");
+  if (error) return fail(error);
+  // Back to the Sales home page so the next sale starts fresh
+  revalidatePath("/", "layout");
+  redirect("/sales");
 }
 
 /** Release gin from the warehouse to an agent, or take back what they did not sell. */
