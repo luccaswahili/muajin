@@ -21,7 +21,10 @@ export default async function MapPage({ searchParams }: { searchParams: Promise<
   const notOnMap: CustomerPick[] = (all.data ?? []).map((c) => ({ id: c.id, name: c.name, phone: c.phone ?? "", area: c.area ?? "", onMap: false }));
   return (
     <ShopMap
-      shops={(data ?? []) as Shop[]}
+      shops={((data ?? []) as Shop[]).map((s) =>
+        // Any shop that has bought from us shows as buying, whatever was picked when it was added
+        s.last_purchase && s.status !== "active" ? { ...s, status: "active" } : s,
+      )}
       notOnMap={notOnMap}
       notOnMapCount={all.count ?? notOnMap.length}
       canAdd={can(me, "sales") || can(me, "customers")}
