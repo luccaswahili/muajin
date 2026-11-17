@@ -18,9 +18,12 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  const { data } = await supabase.auth.getClaims();
+  // Only decides whether to send the visitor to /login and refreshes an expired session.
+  // Reading the session from the cookie avoids a call to the auth service on every tap;
+  // pages still verify the user (getMe) and the database enforces access with row level security.
+  const { data } = await supabase.auth.getSession();
   const path = request.nextUrl.pathname;
-  if (!data?.claims && !path.startsWith("/login") && !path.startsWith("/auth")) {
+  if (!data?.session && !path.startsWith("/login") && !path.startsWith("/auth")) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
