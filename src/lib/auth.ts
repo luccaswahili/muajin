@@ -1,6 +1,23 @@
 import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { verifyAccessToken } from "@/lib/supabase/verify";
+
+type Client = Awaited<ReturnType<typeof createClient>>;
+
+/**
+ * The signed-in user's id. With SUPABASE_JWT_SECRET set (self-hosted), the token is checked here,
+ * which saves a round trip to the auth service on every page. Without it, ask Supabase.
+ */
+async function currentUserId(supabase: Client): Promise<string | null> {
+  const secret = process.env.SUPABASE_JWT_SECRET;
+  if (secret) {
+    const { data } = await supabase.auth.getSession();
+    return verifyAccessToken(data.session?.access_token, secret);
+  }
+  const { data } = await supabase.auth.getClaims();
+  return data?.claims?.sub ?? null;
+}
 
 export type Perm = "sales" | "production" | "expenses" | "bank" | "customers" | "stock" | "reports" | "activity";
 export const PERMS: { key: Perm; label: string }[] = [
@@ -28,8 +45,7 @@ export type Me = {
 
 export const getMe = cache(async (): Promise<Me | null> => {
   const supabase = await createClient();
-  const { data: claims } = await supabase.auth.getClaims();
-  const uid = claims?.claims?.sub;
+  const uid = await currentUserId(supabase);
   if (!uid) return null;
   const { data } = await supabase
     .from("profiles")
