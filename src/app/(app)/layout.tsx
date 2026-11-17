@@ -18,6 +18,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     { href: "/sales", label: "Sales", icon: "", show: can(me, "sales") },
     { href: "/map", label: "Shop map", icon: "", show: can(me, "sales") || can(me, "customers") },
     { href: "/customers", label: "Customers", icon: "", show: can(me, "sales") || can(me, "customers") },
+    { href: "/wholesalers", label: "Wholesalers", icon: "", show: true },
     { href: "/production", label: "Production", icon: "", show: can(me, "production") },
     { href: "/expenses", label: "Expenses", icon: "", show: can(me, "expenses") },
     { href: "/money", label: "Bank & cash", icon: "", show: can(me, "bank") },

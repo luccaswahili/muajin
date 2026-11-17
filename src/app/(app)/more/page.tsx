@@ -14,6 +14,7 @@ export default async function MorePage() {
     { href: "/sales", label: "Sales", show: can(me, "sales") },
     { href: "/map", label: "Shop map", show: can(me, "sales") || can(me, "customers") },
     { href: "/customers", label: "Customers", show: can(me, "sales") || can(me, "customers") },
+    { href: "/wholesalers", label: "Wholesalers", show: true },
     { href: "/production", label: "Production", show: can(me, "production") },
     { href: "/expenses", label: "Expenses", show: can(me, "expenses") },
     { href: "/money", label: "Bank & cash", show: can(me, "bank") },
