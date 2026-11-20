@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { can, canSeeAgents, requireMember, type Me } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { withCustomerRefs } from "@/lib/customer-refs";
 import { Badge, Card, Empty, List, Row, Stat } from "@/components/ui";
 import { fmtDate, monthStart, qty, today, tzs } from "@/lib/format";
 
@@ -23,6 +24,7 @@ export default async function Dashboard() {
     supabase.from("v_cash_holders").select("*").neq("cash_in_hand", 0),
     supabase.from("v_agent_hold").select("agent_name, cartons, loose_bottles").gt("bottles", 0),
   ]);
+  const recentRows = await withCustomerRefs(supabase, recent.data ?? []);
 
   const f = fin.data ?? { bank_balance: 0, cash_in_hand: 0, pending_deposits: 0, pending_deposit_count: 0, receivables: 0 };
   const sum = (rows: { [k: string]: unknown }[] | null, k: string) => (rows ?? []).reduce((a, r) => a + Number(r[k] ?? 0), 0);
@@ -96,9 +98,9 @@ export default async function Dashboard() {
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card title="Latest sales" action={<Link href="/sales" className="text-sm text-brand-600">All</Link>}>
-          {recent.data?.length ? (
+          {recentRows?.length ? (
             <List>
-              {recent.data.map((s) => (
+              {recentRows.map((s) => (
                 <Row key={s.id} href={`/sales/${s.id}`}>
                   <div className="min-w-0">
                     <div className="truncate font-medium">{s.customer_name ?? "Walk-in"} · {qty(s.cartons, s.bottles)}</div>
@@ -155,6 +157,7 @@ async function AgentHome({ me }: { me: Me }) {
     supabase.from("v_sales").select("*").order("created_at", { ascending: false }).limit(5),
     supabase.from("v_agent_hold").select("*").eq("agent_id", me.id).gt("bottles", 0).order("sort"),
   ]);
+  const recentRows = await withCustomerRefs(supabase, recent.data ?? []);
   const rows = monthSales.data ?? [];
   const todayRows = rows.filter((r) => r.date === t);
   const sum = (list: { [k: string]: unknown }[], k: string) => list.reduce((a, r) => a + Number(r[k] ?? 0), 0);
@@ -195,9 +198,9 @@ async function AgentHome({ me }: { me: Me }) {
         <Link href="/customers?nomap=1" className="btn-secondary">Customers not on map</Link>
       </div>
       <Card title="My latest sales" action={<Link href="/sales" className="text-sm text-brand-600">All</Link>}>
-        {recent.data?.length ? (
+        {recentRows?.length ? (
           <List>
-            {recent.data.map((s) => (
+            {recentRows.map((s) => (
               <Row key={s.id} href={`/sales/${s.id}`}>
                 <div className="min-w-0">
                   <div className="truncate font-medium">{s.customer_name ?? "Walk-in"} · {qty(s.cartons, s.bottles)}</div>

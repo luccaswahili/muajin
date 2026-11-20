@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui";
 import { fmtDate, num, tzs } from "@/lib/format";
-import { directionsUrl } from "@/lib/shops";
+import { directionsUrl, withRef } from "@/lib/shops";
 import { HEALTH_LABEL, type WholesalerMetrics } from "@/lib/wholesalers";
 
 const ctn = (n: number | null | undefined, digits = 0) => `${num(n ?? 0, digits)} ctn`;
@@ -25,8 +25,8 @@ export function WholesalerCard({ r }: { r: WholesalerMetrics }) {
     <section id={`w-${r.id}`} className="scroll-mt-20 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
       <div className="mb-3 flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <Link href={`/customers/${r.id}`} className="block truncate text-lg font-semibold text-brand-900">{r.name}</Link>
-          <div className="text-xs text-gray-500">{[r.contact_name, r.area, r.region, r.phone].filter(Boolean).join(" · ")}</div>
+          <Link href={`/customers/${r.id}`} className="block truncate text-lg font-semibold text-brand-900">{withRef(r.name, r.contact_name)}</Link>
+          <div className="text-xs text-gray-500">{[r.area, r.region, r.phone].filter(Boolean).join(" · ")}</div>
         </div>
         <span className="shrink-0 whitespace-nowrap"><Badge tone={h.tone}>{h.label}</Badge></span>
       </div>

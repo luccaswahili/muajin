@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { PERMS } from "@/lib/auth";
 import { displayLogin, loginToEmail } from "@/lib/format";
-import { distanceKm } from "@/lib/shops";
+import { distanceKm, withRef } from "@/lib/shops";
 
 export type ActionState = { ok?: boolean; error?: string; message?: string; confirm?: string } | null;
 
@@ -181,9 +181,10 @@ const searchDigits = (w: string) => {
   const d = w.replace(/\D/g, "");
   return (d.startsWith("255") ? d.slice(3) : d).replace(/^0+/, "");
 };
-const wordMatches = (c: { name: string; phone_digits: string }, w: string) => {
+const wordMatches = (c: { name: string; phone_digits: string; contact_name?: string | null }, w: string) => {
   const d = searchDigits(w);
-  return c.name.toLowerCase().includes(w.toLowerCase()) || (d.length >= 3 && c.phone_digits.includes(d));
+  const lw = w.toLowerCase();
+  return c.name.toLowerCase().includes(lw) || (c.contact_name ?? "").toLowerCase().includes(lw) || (d.length >= 3 && c.phone_digits.includes(d));
 };
 
 /** Search customers by name, phone number, or both ("mama 0712"). Every word must match. */
@@ -195,14 +196,14 @@ export async function searchCustomers(q: string): Promise<CustomerHit[]> {
   const safe = first.replace(/[%,()*\\]/g, "");
   const digits = searchDigits(first);
   const supabase = await createClient();
-  let query = supabase.from("customers").select("id, name, phone, phone_digits, area, lat").order("name").limit(100);
-  query = digits.length >= 3 ? query.or(`name.ilike.%${safe}%,phone_digits.ilike.%${digits}%`) : query.ilike("name", `%${safe}%`);
+  let query = supabase.from("customers").select("id, name, contact_name, phone, phone_digits, area, lat").order("name").limit(100);
+  query = digits.length >= 3 ? query.or(`name.ilike.%${safe}%,phone_digits.ilike.%${digits}%`) : query.or(`name.ilike.%${safe}%,contact_name.ilike.%${safe}%`);
   const { data } = await query;
   const hits = (data ?? []).filter((c) => words.every((w) => wordMatches(c, w))).slice(0, 10);
   if (!hits.length) return [];
   const { data: bal } = await supabase.from("v_customer_balances").select("id, balance").in("id", hits.map((c) => c.id));
   const balance = new Map((bal ?? []).map((b) => [b.id, Number(b.balance)]));
-  return hits.map((c) => ({ id: c.id, name: c.name, phone: c.phone ?? "", area: c.area ?? "", balance: balance.get(c.id) ?? 0, onMap: c.lat != null }));
+  return hits.map((c) => ({ id: c.id, name: withRef(c.name, c.contact_name), phone: c.phone ?? "", area: c.area ?? "", balance: balance.get(c.id) ?? 0, onMap: c.lat != null }));
 }
 
 /** Save an existing customer's location (e.g. standing at their shop). */

@@ -6,7 +6,7 @@ import { Badge, Card, Field, List, PageHeader, Row, Stat } from "@/components/ui
 import { ActionForm, InlineAction, SubmitButton } from "@/components/forms";
 import { deleteRecord, recordCustomerPayment, saveCustomer } from "@/app/actions";
 import { METHOD_LABEL, fmtDate, qty, today, tzs } from "@/lib/format";
-import { REGIONS, SHOP_STATUS, SHOP_TYPES, directionsUrl } from "@/lib/shops";
+import { REF_HINT, REGIONS, SHOP_STATUS, SHOP_TYPES, directionsUrl, withRef } from "@/lib/shops";
 import { LocationField, PinHereButton } from "@/components/location-field";
 
 export default async function CustomerDetail({ params }: { params: Promise<{ id: string }> }) {
@@ -24,7 +24,7 @@ export default async function CustomerDetail({ params }: { params: Promise<{ id:
 
   return (
     <div className="mx-auto max-w-2xl space-y-4">
-      <PageHeader title={c.name} subtitle={[SHOP_TYPES[c.shop_type], c.contact_name, c.phone, c.area, c.region].filter(Boolean).join(" · ")} />
+      <PageHeader title={withRef(c.name, c.contact_name)} subtitle={[SHOP_TYPES[c.shop_type], c.phone, c.area, c.region].filter(Boolean).join(" · ")} />
       <div className="flex flex-wrap gap-2">
         {can(me, "sales") && <Link href={`/sales/new?customer=${c.id}`} className="btn-primary">Sell to this customer</Link>}
         {c.phone && <a href={`tel:${c.phone}`} className="btn-secondary">Call</a>}
@@ -95,7 +95,7 @@ export default async function CustomerDetail({ params }: { params: Promise<{ id:
           <dl className="grid grid-cols-2 gap-2 text-sm">
             {[
               ["Shop name", c.name],
-              ["Owner / contact", c.contact_name],
+              ["Reference", c.contact_name],
               ["Phone", c.phone],
               ["Type", SHOP_TYPES[c.shop_type]],
               ["Region", c.region],
@@ -118,7 +118,7 @@ export default async function CustomerDetail({ params }: { params: Promise<{ id:
             <input type="hidden" name="id" value={c.id} />
             <div className="grid grid-cols-2 gap-2">
               <Field label="Shop name"><input name="name" defaultValue={c.name} className="input" required /></Field>
-              <Field label="Owner / contact"><input name="contact_name" defaultValue={c.contact_name} className="input" /></Field>
+              <Field label="Reference" hint={REF_HINT}><input name="contact_name" defaultValue={c.contact_name} className="input" placeholder="e.g. blue kiosk near the mosque" /></Field>
               <Field label="Phone"><input name="phone" defaultValue={c.phone} className="input" inputMode="tel" /></Field>
               <Field label="Type">
                 <select name="shop_type" defaultValue={c.shop_type} className="input">

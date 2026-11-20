@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePerm } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { withCustomerRefs } from "@/lib/customer-refs";
 import { Badge, Card, List, PageHeader, Row } from "@/components/ui";
 import { InlineAction } from "@/components/forms";
 import { deleteRecord } from "@/app/actions";
@@ -11,8 +12,9 @@ export default async function SaleDetail({ params }: { params: Promise<{ id: str
   const me = await requirePerm("sales");
   const { id } = await params;
   const supabase = await createClient();
-  const { data: s } = await supabase.from("v_sales").select("*").eq("id", id).maybeSingle();
-  if (!s) notFound();
+  const { data: sale } = await supabase.from("v_sales").select("*").eq("id", id).maybeSingle();
+  if (!sale) notFound();
+  const [s] = await withCustomerRefs(supabase, [sale]);
   const { data: payments } = await supabase
     .from("payments")
     .select("*, receiver:profiles!payments_received_by_fkey(full_name)")
