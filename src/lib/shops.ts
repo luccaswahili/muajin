@@ -37,3 +37,12 @@ export function fmtDistance(km: number) {
 export function directionsUrl(lat: number, lng: number) {
   return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
 }
+
+/** A customer's name with its reference (a hint to remember them) in brackets: "Mama Neema (blue kiosk)". */
+export function withRef(name: string | null | undefined, ref: string | null | undefined) {
+  const n = (name ?? "").trim();
+  const r = (ref ?? "").trim();
+  return r && r.toLowerCase() !== n.toLowerCase() ? `${n} (${r})` : n;
+}
+
+export const REF_HINT = "A hint to remember them, e.g. blue kiosk near the mosque";

@@ -5,7 +5,7 @@ import { Badge, Card, Empty, Field, List, PageHeader, Row, Stat } from "@/compon
 import { ActionForm, SubmitButton } from "@/components/forms";
 import { saveCustomer } from "@/app/actions";
 import { fmtDate, tzs } from "@/lib/format";
-import { SHOP_TYPES } from "@/lib/shops";
+import { SHOP_TYPES, withRef } from "@/lib/shops";
 import Link from "next/link";
 
 export const metadata = { title: "Customers" };
@@ -50,7 +50,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: Pr
               <Row key={c.id} href={`/customers/${c.id}`}>
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <span className="truncate font-medium">{c.name}</span>
+                    <span className="truncate font-medium">{withRef(c.name, c.contact_name)}</span>
                     {c.lat == null && <Badge tone="gray">not on map</Badge>}
                   </div>
                   <div className="text-xs text-gray-500">

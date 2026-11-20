@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requirePerm } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { withCustomerRefs } from "@/lib/customer-refs";
 import { Badge, Card, Empty, List, PageHeader, Row, Stat } from "@/components/ui";
 import { fmtDate, monthStart, qty, today, tzs } from "@/lib/format";
 
@@ -16,7 +17,7 @@ export default async function SalesPage({ searchParams }: { searchParams: Promis
   if (sp.unpaid) q = q.gt("balance", 0);
   if (sp.seller) q = q.eq("seller_id", sp.seller);
   const { data: sales } = await q;
-  const rows = sales ?? [];
+  const rows = await withCustomerRefs(supabase, sales ?? []);
   const total = rows.reduce((a, s) => a + Number(s.total), 0);
   const ctn = rows.reduce((a, s) => a + s.cartons, 0);
   const btl = rows.reduce((a, s) => a + s.bottles, 0);

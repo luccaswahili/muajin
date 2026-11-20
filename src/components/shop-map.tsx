@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import type * as Leaflet from "leaflet";
 import { ActionForm, SubmitButton } from "@/components/forms";
 import { pinCustomer, saveCustomer, searchCustomers } from "@/app/actions";
-import { REGIONS, SHOP_STATUS, SHOP_TYPES, directionsUrl, distanceKm, fmtDistance } from "@/lib/shops";
+import { REGIONS, SHOP_STATUS, SHOP_TYPES, directionsUrl, distanceKm, fmtDistance, withRef } from "@/lib/shops";
 import { tzs } from "@/lib/format";
 
 export type Shop = {
@@ -243,6 +243,10 @@ export function ShopMap({ shops, notOnMap, notOnMapCount, canAdd, focusId }: {
 
       {/* Right buttons */}
       <div className="absolute bottom-4 right-3 z-[1000] flex flex-col items-end gap-2">
+        <Link href="/map/locate" className="flex h-12 flex-col items-center justify-center rounded-full bg-red-600 px-3 text-white shadow-lg" aria-label="Locate customers and follow up on money owed">
+          <span className="text-lg leading-none">🎯</span>
+          <span className="text-[10px] font-semibold leading-tight">Locate</span>
+        </Link>
         <button onClick={() => locate()} className="grid h-12 w-12 place-items-center rounded-full bg-white text-xl shadow-lg" aria-label="Go to my location">
           {locating ? "…" : "◎"}
         </button>
@@ -274,7 +278,7 @@ export function ShopMap({ shops, notOnMap, notOnMapCount, canAdd, focusId }: {
                 <span className="min-w-0">
                   <span className="flex items-center gap-2 font-medium">
                     <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: SHOP_STATUS[s.status]?.color }} />
-                    <span className="truncate">{s.name}</span>
+                    <span className="truncate">{withRef(s.name, s.contact_name)}</span>
                   </span>
                   <span className="block text-xs text-gray-500">{[SHOP_TYPES[s.shop_type], s.area].filter(Boolean).join(" · ")}</span>
                 </span>
@@ -290,12 +294,12 @@ export function ShopMap({ shops, notOnMap, notOnMapCount, canAdd, focusId }: {
         <div className="absolute inset-x-0 bottom-0 z-[1001] rounded-t-2xl bg-white p-4 shadow-2xl">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <div className="truncate text-lg font-semibold">{sel.name}</div>
+              <div className="truncate text-lg font-semibold">{withRef(sel.name, sel.contact_name)}</div>
               <div className="text-xs text-gray-500">
                 {SHOP_TYPES[sel.shop_type]} · <span style={{ color: SHOP_STATUS[sel.status]?.color }}>{SHOP_STATUS[sel.status]?.label}</span>
                 {origin && ` · ${fmtDistance(distanceKm(origin, sel))} away`}
               </div>
-              <div className="text-xs text-gray-500">{[sel.contact_name, sel.phone, sel.area, sel.region].filter(Boolean).join(" · ")}</div>
+              <div className="text-xs text-gray-500">{[sel.phone, sel.area, sel.region].filter(Boolean).join(" · ")}</div>
               <div className="mt-1 text-xs">
                 Bought {sel.cartons_bought} ctn{sel.last_purchase ? ` · last ${sel.last_purchase}` : ""}
                 {Number(sel.balance) > 0 && <span className="ml-1 font-semibold text-amber-700">owes {tzs(sel.balance)}</span>}
@@ -348,7 +352,7 @@ export function ShopMap({ shops, notOnMap, notOnMapCount, canAdd, focusId }: {
               <input type="hidden" name="lng" value={pin?.lng ?? ""} />
               <input name="name" className="input" placeholder="Shop / customer name" required />
               <div className="grid grid-cols-2 gap-2">
-                <input name="contact_name" className="input" placeholder="Owner / contact name" />
+                <input name="contact_name" className="input" placeholder="Reference (a hint to remember them)" />
                 <input name="phone" className="input" placeholder="Phone" inputMode="tel" />
                 <select name="shop_type" className="input" defaultValue="magi_shop">
                   {Object.entries(SHOP_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
