@@ -12,6 +12,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Tell Coolify to deploy
         env:
@@ -22,5 +23,5 @@ jobs:
             echo "COOLIFY_WEBHOOK or COOLIFY_TOKEN secret is missing"; exit 1
           fi
           # Newer Coolify versions take POST, older ones GET: try POST first, then GET.
-          curl -sS --fail-with-body --retry 3 -X POST -H "Authorization: Bearer $COOLIFY_TOKEN" "$COOLIFY_WEBHOOK" \
-            || curl -sS --fail-with-body --retry 3 -H "Authorization: Bearer $COOLIFY_TOKEN" "$COOLIFY_WEBHOOK"
+          curl -sS --fail-with-body --connect-timeout 20 --max-time 60 --retry 3 -X POST -H "Authorization: Bearer $COOLIFY_TOKEN" "$COOLIFY_WEBHOOK" \
+            || curl -sS --fail-with-body --connect-timeout 20 --max-time 60 --retry 3 -H "Authorization: Bearer $COOLIFY_TOKEN" "$COOLIFY_WEBHOOK"
