@@ -4,6 +4,8 @@ import "leaflet/dist/leaflet.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type * as Leaflet from "leaflet";
+import { loadLeaflet, ROTATE_OPTIONS } from "@/lib/load-leaflet";
+import { CompassButton } from "@/components/compass-button";
 import { fmtDate, tzs } from "@/lib/format";
 import { withRef } from "@/lib/shops";
 import { fetchRoute, fmtMeters, fmtMinutes, meters, snap, waNumber, type Mode, type Pt, type Route } from "@/lib/nav";
@@ -46,6 +48,7 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
   const meLayer = useRef<Leaflet.LayerGroup | null>(null);
   const routeLayer = useRef<Leaflet.LayerGroup | null>(null);
   const [ready, setReady] = useState(false);
+  const [mapObj, setMapObj] = useState<Leaflet.Map | null>(null);
 
   const [me, setMe] = useState<Me | null>(null);
   const [geoError, setGeoError] = useState("");
@@ -81,10 +84,10 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const lib = (await import("leaflet")).default;
+      const lib = await loadLeaflet();
       if (cancelled || !el.current || map.current) return;
       L.current = lib;
-      const m = lib.map(el.current, { zoomControl: false }).setView([DAR.lat, DAR.lng], 12);
+      const m = lib.map(el.current, { zoomControl: false, ...ROTATE_OPTIONS }).setView([DAR.lat, DAR.lng], 12);
       lib.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
@@ -96,6 +99,7 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
       m.on("dragstart", () => setFollow(false));
       m.on("click", () => setSelected(null));
       map.current = m;
+      setMapObj(m);
       setReady(true);
     })();
     return () => {
@@ -439,6 +443,7 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
 
       {/* Buttons on the right */}
       <div className="absolute bottom-4 right-3 z-[1000] flex flex-col items-end gap-2">
+        <CompassButton map={mapObj} />
         {target && (
           <button onClick={overview} className="grid h-12 w-12 place-items-center rounded-full bg-white text-lg shadow-lg" aria-label="See whole route">🗺️</button>
         )}

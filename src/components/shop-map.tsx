@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type * as Leaflet from "leaflet";
+import { loadLeaflet, ROTATE_OPTIONS } from "@/lib/load-leaflet";
+import { CompassButton } from "@/components/compass-button";
 import { ActionForm, SubmitButton } from "@/components/forms";
 import { pinCustomer, saveCustomer, searchCustomers } from "@/app/actions";
 import { REGIONS, SHOP_STATUS, SHOP_TYPES, directionsUrl, distanceKm, fmtDistance, withRef } from "@/lib/shops";
@@ -35,6 +37,7 @@ export function ShopMap({ shops, notOnMap, notOnMapCount, canAdd, focusId }: {
   const pinMarker = useRef<Leaflet.Marker | null>(null);
 
   const [ready, setReady] = useState(false);
+  const [mapObj, setMapObj] = useState<Leaflet.Map | null>(null);
   const [me, setMe] = useState<(Point & { acc: number }) | null>(null);
   const [locating, setLocating] = useState(false);
   const [geoError, setGeoError] = useState("");
@@ -55,11 +58,11 @@ export function ShopMap({ shops, notOnMap, notOnMapCount, canAdd, focusId }: {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const lib = (await import("leaflet")).default;
+      const lib = await loadLeaflet();
       if (cancelled || !el.current || map.current) return;
       L.current = lib;
       const start = shops.find((s) => s.id === focusId);
-      const m = lib.map(el.current, { zoomControl: false, attributionControl: true }).setView(start ? [start.lat, start.lng] : [DAR.lat, DAR.lng], start ? 17 : 12);
+      const m = lib.map(el.current, { zoomControl: false, attributionControl: true, ...ROTATE_OPTIONS }).setView(start ? [start.lat, start.lng] : [DAR.lat, DAR.lng], start ? 17 : 12);
       lib.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
@@ -72,6 +75,7 @@ export function ShopMap({ shops, notOnMap, notOnMapCount, canAdd, focusId }: {
         else setSelected(null);
       });
       map.current = m;
+      setMapObj(m);
       setReady(true);
     })();
     return () => {
@@ -243,6 +247,7 @@ export function ShopMap({ shops, notOnMap, notOnMapCount, canAdd, focusId }: {
 
       {/* Right buttons */}
       <div className="absolute bottom-4 right-3 z-[1000] flex flex-col items-end gap-2">
+        <CompassButton map={mapObj} />
         <Link href="/map/locate" className="flex h-12 flex-col items-center justify-center rounded-full bg-red-600 px-3 text-white shadow-lg" aria-label="Locate customers and follow up on money owed">
           <span className="text-lg leading-none">🎯</span>
           <span className="text-[10px] font-semibold leading-tight">Locate</span>
