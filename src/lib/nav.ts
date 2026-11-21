@@ -34,7 +34,7 @@ export function ahead(p: Pt, deg: number, d: number): Pt {
 /** Closest point on the route to p: which segment, how far along the route, how far off it. */
 export function snap(route: Route, p: Pt) {
   const { coords, cum } = route;
-  let best = { idx: 0, along: 0, off: Infinity };
+  let best = { idx: 0, along: 0, off: Infinity, pt: p as Pt };
   const kx = Math.cos(rad(p.lat)) * 111320;
   const ky = 110540;
   for (let i = 0; i < coords.length - 1; i++) {
@@ -45,7 +45,7 @@ export function snap(route: Route, p: Pt) {
     const len2 = dx * dx + dy * dy;
     const t = len2 ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / len2)) : 0;
     const off = Math.hypot(ax + t * dx, ay + t * dy);
-    if (off < best.off) best = { idx: i, along: cum[i] + t * (cum[i + 1] - cum[i]), off };
+    if (off < best.off) best = { idx: i, along: cum[i] + t * (cum[i + 1] - cum[i]), off, pt: { lat: a.lat + t * (b.lat - a.lat), lng: a.lng + t * (b.lng - a.lng) } };
   }
   return best;
 }
@@ -89,6 +89,16 @@ export async function fetchRoute(from: Pt, to: Pt, mode: Mode, signal?: AbortSig
     }
   }
   return route;
+}
+
+/** A circle of radius r metres around c, as a closed ring of [lng, lat] points. */
+export function circleRing(c: Pt, r: number, n = 64): [number, number][] {
+  const ring: [number, number][] = [];
+  for (let i = 0; i <= n; i++) {
+    const q = ahead(c, (i * 360) / n, r);
+    ring.push([q.lng, q.lat]);
+  }
+  return ring;
 }
 
 export function fmtMeters(m: number) {

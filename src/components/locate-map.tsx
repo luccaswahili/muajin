@@ -1,16 +1,16 @@
 "use client";
 
-import "leaflet/dist/leaflet.css";
+import "maplibre-gl/dist/maplibre-gl.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import type * as Leaflet from "leaflet";
-import { addBaseTiles, loadLeaflet, meDotHtml, navArrowHtml, ROTATE_OPTIONS, teardropHtml } from "@/lib/load-leaflet";
+import type { GeoJSONSource, Map as MlMap, Marker } from "maplibre-gl";
+import { MAP_STYLE, flattenBuildings, meDotHtml, navArrowHtml, teardropHtml } from "@/lib/map-style";
+import { CompassButton } from "@/components/compass-button";
 import { TurnIcon } from "@/components/turn-icon";
 import { LocateIcon } from "@/components/locate-icon";
-import { CompassButton } from "@/components/compass-button";
 import { fmtDate, tzs } from "@/lib/format";
 import { withRef } from "@/lib/shops";
-import { ahead, arrivalTime, bearing, fetchRoute, fmtMeters, fmtMinutes, meters, snap, waNumber, type Mode, type Pt, type Route } from "@/lib/nav";
+import { ahead, arrivalTime, bearing, circleRing, fetchRoute, fmtMeters, fmtMinutes, meters, snap, waNumber, type Mode, type Pt, type Route } from "@/lib/nav";
 
 export type LocateCustomer = {
   id: string; name: string; contact_name: string | null; phone: string | null; area: string | null;
@@ -22,36 +22,40 @@ export type LocateCustomer = {
 
 type Me = Pt & { acc: number; heading: number | null };
 type Sort = "near" | "big" | "old";
+type Feature = GeoJSON.Feature;
 
 const DAR: Pt = { lat: -6.7924, lng: 39.2083 };
 const RADII = [0.5, 1, 2, 3, 4, 5];
 const ARRIVE_M = 35;
+/** How long the arrow glides from one GPS fix to the next */
+const GLIDE_MS = 950;
 
 const short = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${Math.round(n / 1000)}k` : `${Math.round(n)}`);
 const daysSince = (d: string | null, today: string) =>
   d ? Math.max(0, Math.round((new Date(today + "T12:00:00Z").getTime() - new Date(d + "T12:00:00Z").getTime()) / 86_400_000)) : null;
+const fc = (features: Feature[]): GeoJSON.FeatureCollection => ({ type: "FeatureCollection", features });
+const ringFeature = (c: Pt, r: number): Feature => ({ type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [circleRing(c, r)] } });
 
-function pin(owes: boolean, label: string, big: boolean) {
-  if (big) return `<div style="position:relative;width:28px;height:40px">${teardropHtml(owes ? "#EA4335" : "#188038")}${owes && label ? `<div style="position:absolute;left:30px;top:2px;white-space:nowrap;background:#fff;color:#a50e0e;font:600 12px/1.4 system-ui;padding:1px 6px;border-radius:9999px;box-shadow:0 1px 3px rgba(0,0,0,.35)">${label}</div>` : ""}</div>`;
-  const bg = owes ? "#EA4335" : "#188038";
-  const size = big ? 22 : 16;
+function bigPin(owes: boolean, label: string) {
   const tag = owes && label
-    ? `<div style="position:absolute;left:${size + 2}px;top:-2px;white-space:nowrap;background:#fff;color:#991b1b;font:600 11px/1.4 system-ui;padding:0 5px;border-radius:9999px;box-shadow:0 1px 3px rgba(0,0,0,.35)">${label}</div>`
+    ? `<div style="position:absolute;left:30px;top:2px;white-space:nowrap;background:#fff;color:#a50e0e;font:600 12px/1.4 system-ui;padding:1px 6px;border-radius:9999px;box-shadow:0 1px 3px rgba(0,0,0,.35)">${label}</div>`
     : "";
-  return `<div style="position:relative;width:${size}px;height:${size}px;border-radius:9999px;background:${bg};border:3px solid ${big ? "#111" : "#fff"};box-shadow:0 1px 4px rgba(0,0,0,.4)">${tag}</div>`;
+  return `<div style="position:relative;width:28px;height:40px">${teardropHtml(owes ? "#EA4335" : "#188038")}${tag}</div>`;
 }
 
 export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
   customers: LocateCustomer[]; isAgent: boolean; today: string; unlocatedDebtors: { count: number; total: number };
 }) {
   const el = useRef<HTMLDivElement>(null);
-  const L = useRef<typeof Leaflet | null>(null);
-  const map = useRef<Leaflet.Map | null>(null);
-  const shopLayer = useRef<Leaflet.LayerGroup | null>(null);
-  const meLayer = useRef<Leaflet.LayerGroup | null>(null);
-  const routeLayer = useRef<Leaflet.LayerGroup | null>(null);
+  const ml = useRef<typeof import("maplibre-gl") | null>(null);
+  const map = useRef<MlMap | null>(null);
+  const meMarker = useRef<Marker | null>(null);
+  const meKind = useRef<"dot" | "arrow" | null>(null);
+  const pinMarker = useRef<Marker | null>(null);
+  const shown = useRef<Pt | null>(null);
+  const glide = useRef<number | null>(null);
   const [ready, setReady] = useState(false);
-  const [mapObj, setMapObj] = useState<Leaflet.Map | null>(null);
+  const [mapBearing, setMapBearing] = useState(0);
 
   const [me, setMe] = useState<Me | null>(null);
   const [geoError, setGeoError] = useState("");
@@ -72,41 +76,79 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
   const [follow, setFollow] = useState(true);
   const [arrived, setArrived] = useState(false);
   const [headingUp, setHeadingUp] = useState(true);
-  const [mapBearing, setMapBearing] = useState(0);
   const lastRoute = useRef<{ at: number; from: Pt } | null>(null);
   const routeAbort = useRef<AbortController | null>(null);
   const wakeLock = useRef<{ release: () => Promise<void> } | null>(null);
-  const followRef = useRef(true);
   const targetRef = useRef<LocateCustomer | null>(null);
   useEffect(() => {
-    followRef.current = follow;
     targetRef.current = target;
-  }, [follow, target]);
+  }, [target]);
 
   const owedTo = isAgent ? "Owe you" : "Owe Muwa Gin";
 
-  // Map
+  // Map: vector tiles drawn by the phone's graphics chip, so turning and zooming stay smooth
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const lib = await loadLeaflet();
+      const lib = await import("maplibre-gl");
       if (cancelled || !el.current || map.current) return;
-      L.current = lib;
-      const m = lib.map(el.current, { zoomControl: false, ...ROTATE_OPTIONS }).setView([DAR.lat, DAR.lng], 12);
-      addBaseTiles(lib, m);
-      lib.control.zoom({ position: "topright" }).addTo(m);
-      routeLayer.current = lib.layerGroup().addTo(m);
-      shopLayer.current = lib.layerGroup().addTo(m);
-      meLayer.current = lib.layerGroup().addTo(m);
+      ml.current = lib;
+      const m = new lib.Map({
+        container: el.current,
+        style: MAP_STYLE,
+        center: [DAR.lng, DAR.lat],
+        zoom: 12,
+        maxPitch: 60,
+        attributionControl: { compact: true },
+      });
+      map.current = m;
+      m.on("load", () => {
+        if (cancelled) return;
+        flattenBuildings(m);
+        m.addSource("radius", { type: "geojson", data: fc([]) });
+        m.addSource("acc", { type: "geojson", data: fc([]) });
+        m.addSource("route", { type: "geojson", data: fc([]) });
+        m.addSource("customers", { type: "geojson", data: fc([]) });
+        m.addLayer({ id: "radius-fill", type: "fill", source: "radius", paint: { "fill-color": "#188038", "fill-opacity": 0.05 } });
+        m.addLayer({ id: "radius-line", type: "line", source: "radius", paint: { "line-color": "#188038", "line-width": 1.5, "line-dasharray": [3, 3] } });
+        m.addLayer({ id: "acc-fill", type: "fill", source: "acc", paint: { "fill-color": "#4285F4", "fill-opacity": 0.12 } });
+        // Route: blue line with a darker edge when riding, a row of blue dots when walking
+        const solid: ["==", ["get", string], string] = ["==", ["get", "kind"], "solid"];
+        const straight: ["==", ["get", string], string] = ["==", ["get", "kind"], "straight"];
+        m.addLayer({ id: "route-straight", type: "line", source: "route", filter: straight, layout: { "line-cap": "round" }, paint: { "line-color": "#5f6368", "line-width": 4, "line-dasharray": [0, 2.5] } });
+        m.addLayer({ id: "route-casing", type: "line", source: "route", filter: solid, layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#1967D2", "line-width": ["interpolate", ["linear"], ["zoom"], 12, 6, 18, 14] } });
+        m.addLayer({ id: "route-line", type: "line", source: "route", filter: solid, layout: { "line-cap": "round", "line-join": "round" }, paint: { "line-color": "#4285F4", "line-width": ["interpolate", ["linear"], ["zoom"], 12, 4, 18, 10] } });
+        m.addLayer({ id: "route-dots", type: "circle", source: "route", filter: ["==", ["get", "kind"], "dot"], paint: { "circle-color": "#4285F4", "circle-radius": ["interpolate", ["linear"], ["zoom"], 13, 2.5, 18, 5.5], "circle-stroke-color": "#1967D2", "circle-stroke-width": 1 } });
+        m.addLayer({
+          id: "cust-dot", type: "circle", source: "customers",
+          paint: {
+            "circle-color": ["case", ["get", "owes"], "#EA4335", "#188038"],
+            "circle-radius": ["interpolate", ["linear"], ["zoom"], 11, 5, 16, 8],
+            "circle-stroke-color": "#fff", "circle-stroke-width": 2.5,
+          },
+        });
+        m.addLayer({
+          id: "cust-label", type: "symbol", source: "customers", filter: ["get", "owes"],
+          layout: { "text-field": ["get", "label"], "text-font": ["Noto Sans Bold"], "text-size": 12, "text-anchor": "left", "text-offset": [0.9, 0], "text-allow-overlap": false },
+          paint: { "text-color": "#a50e0e", "text-halo-color": "#fff", "text-halo-width": 2 },
+        });
+        setReady(true);
+      });
       m.on("dragstart", () => setFollow(false));
       m.on("rotate", () => setMapBearing(m.getBearing()));
-      m.on("click", () => setSelected(null));
-      map.current = m;
-      setMapObj(m);
-      setReady(true);
+      m.on("rotatestart", (e) => {
+        if ((e as { originalEvent?: Event }).originalEvent) setHeadingUp(false);
+      });
+      m.on("click", (e) => {
+        if (targetRef.current) return;
+        const box: [[number, number], [number, number]] = [[e.point.x - 14, e.point.y - 14], [e.point.x + 14, e.point.y + 14]];
+        const hit = m.getLayer("cust-dot") ? m.queryRenderedFeatures(box, { layers: ["cust-dot"] })[0] : undefined;
+        setSelected(hit ? String(hit.properties?.id) : null);
+      });
     })();
     return () => {
       cancelled = true;
+      if (glide.current) cancelAnimationFrame(glide.current);
       map.current?.remove();
       map.current = null;
     };
@@ -135,12 +177,12 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
         }
         if (first) {
           first = false;
-          map.current?.setView([p.lat, p.lng], 15);
+          map.current?.jumpTo({ center: [p.lng, p.lat], zoom: 15 });
         }
       },
       (err) =>
         setGeoError(err.code === 1 ? "Location is blocked. Allow location for this site in your browser settings." : "Looking for your location… go outside if it takes long."),
-      { enableHighAccuracy: true, maximumAge: 3000, timeout: 20000 },
+      { enableHighAccuracy: true, maximumAge: 1000, timeout: 20000 },
     );
     return () => navigator.geolocation.clearWatch(id);
   }, []);
@@ -183,32 +225,48 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
       .slice(0, 8);
   }, [query, withDist]);
 
-  // Markers
+  // Customer dots (the picked one gets a big pin instead). Positions only change when the list does.
+  const pinned = target?.id ?? selected;
   useEffect(() => {
-    const lib = L.current;
-    if (!ready || !lib || !shopLayer.current) return;
-    shopLayer.current.clearLayers();
-    const show = target ? visible.filter((c) => c.id === target.id) : visible;
-    for (const c of show) {
-      const big = c.id === selected || c.id === target?.id;
-      lib.marker([c.lat, c.lng], {
-        icon: big
-          ? lib.divIcon({ html: pin(c.owes, c.owes ? short(Number(c.balance)) : "", true), className: "", iconSize: [28, 40], iconAnchor: [14, 40] })
-          : lib.divIcon({ html: pin(c.owes, c.owes ? short(Number(c.balance)) : "", false), className: "", iconSize: [16, 16] }),
-        zIndexOffset: big ? 1000 : c.owes ? 500 : 0,
-      })
-        .on("click", () => {
-          if (!target) setSelected(c.id);
-        })
-        .addTo(shopLayer.current);
-    }
-  }, [ready, visible, selected, target]);
+    const m = map.current;
+    if (!ready || !m) return;
+    const show = target ? [] : visible.filter((c) => c.id !== pinned);
+    (m.getSource("customers") as GeoJSONSource).setData(fc(show.map((c) => ({
+      type: "Feature",
+      properties: { id: c.id, owes: c.owes, label: c.owes ? short(Number(c.balance)) : "" },
+      geometry: { type: "Point", coordinates: [c.lng, c.lat] },
+    }))));
+  }, [ready, visible, pinned, target]);
+
+  useEffect(() => {
+    const lib = ml.current;
+    const m = map.current;
+    if (!ready || !lib || !m) return;
+    pinMarker.current?.remove();
+    pinMarker.current = null;
+    const c = withDist.find((x) => x.id === pinned);
+    if (!c) return;
+    const div = document.createElement("div");
+    div.innerHTML = bigPin(c.owes, c.owes ? short(Number(c.balance)) : "");
+    pinMarker.current = new lib.Marker({ element: div, anchor: "bottom-left", offset: [-14, 0] }).setLngLat([c.lng, c.lat]).addTo(m);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, pinned]);
+
+  // Radius ring and how sure the phone is of my spot
+  useEffect(() => {
+    const m = map.current;
+    if (!ready || !m) return;
+    (m.getSource("radius") as GeoJSONSource).setData(fc(me && radius && !target ? [ringFeature(me, radius * 1000)] : []));
+    (m.getSource("acc") as GeoJSONSource).setData(fc(me && !target && me.acc > 5 ? [ringFeature(me, me.acc)] : []));
+  }, [ready, me, radius, target]);
 
   // Fit the radius on screen when it changes
   useEffect(() => {
-    const lib = L.current;
-    if (!ready || !lib || !map.current || !me || !radius || target) return;
-    map.current.fitBounds(lib.latLng(me.lat, me.lng).toBounds(radius * 2000), { padding: [20, 20] });
+    const lib = ml.current;
+    const m = map.current;
+    if (!ready || !lib || !m || !me || !radius || target) return;
+    const n = ahead(me, 0, radius * 1000), e = ahead(me, 90, radius * 1000), s = ahead(me, 180, radius * 1000), w = ahead(me, 270, radius * 1000);
+    m.fitBounds([[w.lng, s.lat], [e.lng, n.lat]], { padding: 24, bearing: m.getBearing() });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, radius]);
 
@@ -219,7 +277,7 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
     setShowList(false);
     setSearchOpen(false);
     setQuery("");
-    map.current?.flyTo([c.lat, c.lng], 17, { duration: 0.7 });
+    map.current?.flyTo({ center: [c.lng, c.lat], zoom: 17, duration: 700 });
   }
 
   // ---------------------------------------------------------------- navigation
@@ -256,7 +314,7 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
       /* screen may still turn off */
     }
     if (me) {
-      map.current?.setView([me.lat, me.lng], 17);
+      map.current?.easeTo({ center: [me.lng, me.lat], zoom: 17, pitch: 45, duration: 800 });
       loadRoute(me, c, mode);
     }
   }
@@ -264,13 +322,13 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
   function stop() {
     routeAbort.current?.abort();
     setTarget(null);
+    setSelected(target?.id ?? null);
     setRoute(null);
     setRouteError("");
     setArrived(false);
     wakeLock.current?.release().catch(() => {});
     wakeLock.current = null;
-    routeLayer.current?.clearLayers();
-    map.current?.setBearing(0);
+    map.current?.easeTo({ bearing: 0, pitch: 0, padding: { top: 0, bottom: 0, left: 0, right: 0 }, duration: 600 });
   }
 
   // Release the screen lock when leaving the page
@@ -284,7 +342,7 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
     const straight = meters(me, target);
     const toTarget = bearing(me, target);
     type Next = { text: string; in: number; type: string; modifier: string };
-    if (!route) return { left: straight, secs: null as number | null, off: 0, idx: 0, next: null as Next | null, then: null as Next | null, straight, dir: me.heading ?? toTarget };
+    if (!route) return { left: straight, secs: null as number | null, off: 0, idx: 0, pt: me as Pt, onRoad: false, next: null as Next | null, then: null as Next | null, straight, dir: me.heading ?? toTarget };
     const s = snap(route, me);
     const left = Math.max(0, route.distance - s.along) + (s.off > 30 ? s.off : 0);
     const speed = route.duration > 0 ? route.distance / route.duration : 1.3;
@@ -292,57 +350,117 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
     const nextStep = k >= 0 ? route.steps[k] : undefined;
     const thenStep = k >= 0 ? route.steps[k + 1] : undefined;
     // Which way I am going: along the road when I am on it, else my compass, else straight at the shop
+    const onRoad = s.off < 30;
     const a = route.coords[s.idx], b = route.coords[Math.min(s.idx + 1, route.coords.length - 1)];
-    const dir = s.off < 30 && meters(a, b) > 1 ? bearing(a, b) : me.heading ?? toTarget;
+    const dir = onRoad && meters(a, b) > 1 ? bearing(a, b) : me.heading ?? toTarget;
     return {
       left,
       secs: left / speed,
       off: s.off,
       idx: s.idx,
+      // Like Google: when I am close to the road, show me on the road so GPS wobble does not jump around
+      pt: onRoad ? s.pt : (me as Pt),
+      onRoad,
       next: nextStep ? { text: nextStep.text, in: route.cum[nextStep.idx] - s.along, type: nextStep.type, modifier: nextStep.modifier } : null,
       then: thenStep ? { text: thenStep.text, in: route.cum[thenStep.idx] - s.along, type: thenStep.type, modifier: thenStep.modifier } : null,
       straight,
       dir,
     };
   }, [target, me, route]);
-  const navDir = progress ? Math.round(progress.dir) : null;
 
-  // Me, radius circle
+  // My marker: blue dot normally, blue arrow while navigating. It glides between GPS fixes.
   useEffect(() => {
-    const lib = L.current;
-    if (!ready || !lib || !meLayer.current) return;
-    meLayer.current.clearLayers();
-    if (!me) return;
-    if (radius && !target) {
-      lib.circle([me.lat, me.lng], { radius: radius * 1000, color: "#16654a", weight: 1.5, dashArray: "6 6", fillOpacity: 0.04, interactive: false }).addTo(meLayer.current);
-    }
-    if (!target) lib.circle([me.lat, me.lng], { radius: me.acc, color: "#4285F4", weight: 1, opacity: 0.4, fillColor: "#4285F4", fillOpacity: 0.12, interactive: false }).addTo(meLayer.current);
-    // Marker icons stay upright when the map turns, so add the map's turn to my heading
-    const icon = target
-      ? lib.divIcon({ html: navArrowHtml((navDir ?? 0) + mapBearing), className: "", iconSize: [44, 44] })
-      : lib.divIcon({ html: meDotHtml(me.heading === null ? null : me.heading + mapBearing), className: "", iconSize: [22, 22] });
-    lib.marker([me.lat, me.lng], { icon, interactive: false, zIndexOffset: 2000 }).addTo(meLayer.current);
-  }, [ready, me, radius, target, navDir, mapBearing]);
-
-
-  // Arrive, re-route when off the path, follow me
-  useEffect(() => {
-    if (!target || !me || !progress) return;
+    const lib = ml.current;
     const m = map.current;
-    if (followRef.current && m) {
-      if (headingUp) {
-        // Like Google Maps: the way I am going points up, and I sit low on the screen so I see what is ahead
-        const want = (360 - progress.dir) % 360;
-        const diff = Math.abs(((m.getBearing() - want + 540) % 360) - 180);
-        if (diff > 6) m.setBearing(want);
-        const mpp = (40075016.686 * Math.cos((me.lat * Math.PI) / 180)) / 2 ** (m.getZoom() + 8);
-        const c = ahead(me, progress.dir, m.getSize().y * 0.2 * mpp);
-        m.panTo([c.lat, c.lng], { animate: true });
-      } else {
-        m.panTo([me.lat, me.lng], { animate: true });
-      }
+    if (!ready || !lib || !m || !me) return;
+    const kind = target ? "arrow" : "dot";
+    const to = progress?.pt ?? me;
+    if (!meMarker.current || meKind.current !== kind) {
+      meMarker.current?.remove();
+      const div = document.createElement("div");
+      div.innerHTML = kind === "arrow" ? navArrowHtml() : meDotHtml(true);
+      meMarker.current = new lib.Marker({ element: div, rotationAlignment: "map", pitchAlignment: "map" }).setLngLat([to.lng, to.lat]).addTo(m);
+      meKind.current = kind;
+      shown.current = to;
     }
-    if (arrived || routing) return;
+    const mk = meMarker.current;
+    const facing = target ? progress?.dir ?? 0 : me.heading;
+    mk.setRotation(facing ?? 0);
+    const beam = mk.getElement().querySelector<HTMLElement>("[data-beam]");
+    if (beam) beam.style.display = facing === null ? "none" : "";
+
+    // Glide from where the arrow is drawn now to the new spot
+    const from = shown.current ?? to;
+    const jump = meters(from, to);
+    if (glide.current) cancelAnimationFrame(glide.current);
+    const t0 = performance.now();
+    const ms = jump > 250 ? 0 : GLIDE_MS;
+    const frame = (now: number) => {
+      const k = ms ? Math.min(1, (now - t0) / ms) : 1;
+      const p = { lat: from.lat + (to.lat - from.lat) * k, lng: from.lng + (to.lng - from.lng) * k };
+      shown.current = p;
+      mk.setLngLat([p.lng, p.lat]);
+      if (k < 1) glide.current = requestAnimationFrame(frame);
+    };
+    glide.current = requestAnimationFrame(frame);
+
+    // Camera follows in the same glide, so the map and the arrow move together
+    if (target && follow) {
+      const h = m.getContainer().clientHeight;
+      m.easeTo({
+        center: [to.lng, to.lat],
+        bearing: headingUp ? progress?.dir ?? m.getBearing() : m.getBearing(),
+        pitch: headingUp ? 45 : m.getPitch(),
+        padding: { top: Math.round(h * 0.45), bottom: 150, left: 0, right: 0 },
+        duration: ms || 300,
+        easing: (t) => t,
+      });
+    }
+  }, [ready, me, target, progress, follow, headingUp]);
+
+  // Draw the route still ahead of me. Only the data changes; the map redraws it on the GPU.
+  useEffect(() => {
+    const m = map.current;
+    if (!ready || !m) return;
+    const src = m.getSource("route") as GeoJSONSource;
+    if (!target) {
+      src.setData(fc([]));
+      return;
+    }
+    const start = progress?.pt ?? me;
+    if (!route) {
+      src.setData(fc(start ? [{ type: "Feature", properties: { kind: "straight" }, geometry: { type: "LineString", coordinates: [[start.lng, start.lat], [target.lng, target.lat]] } }] : []));
+      return;
+    }
+    const idx = progress?.idx ?? 0;
+    const coords: [number, number][] = [
+      ...(start ? [[start.lng, start.lat] as [number, number]] : []),
+      ...route.coords.slice(idx + 1).map((p) => [p.lng, p.lat] as [number, number]),
+    ];
+    if (mode === "car") {
+      src.setData(fc([{ type: "Feature", properties: { kind: "solid" }, geometry: { type: "LineString", coordinates: coords } }]));
+      return;
+    }
+    // Walking: evenly spaced dots, like Google
+    const dots: Feature[] = [];
+    const gap = 9;
+    let carry = 0;
+    for (let i = 0; i < coords.length - 1; i++) {
+      const a = { lng: coords[i][0], lat: coords[i][1] }, b = { lng: coords[i + 1][0], lat: coords[i + 1][1] };
+      const len = meters(a, b);
+      for (let d = carry; d < len; d += gap) {
+        const t = d / len;
+        dots.push({ type: "Feature", properties: { kind: "dot" }, geometry: { type: "Point", coordinates: [a.lng + (b.lng - a.lng) * t, a.lat + (b.lat - a.lat) * t] } });
+      }
+      carry = (carry - len) % gap;
+      if (carry < 0) carry += gap;
+    }
+    src.setData(fc(dots));
+  }, [ready, route, target, me, progress, mode]);
+
+  // Get a new route when I leave it, or now and then on a long trip
+  useEffect(() => {
+    if (!target || !me || !progress || arrived || routing) return;
     const last = lastRoute.current;
     const since = last ? Date.now() - last.at : Infinity;
     const movedFromLast = last ? meters(last.from, me) : Infinity;
@@ -351,31 +469,7 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
       loadRoute(me, target, mode);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [me, route, headingUp]);
-
-  // Draw the route still ahead of me
-  useEffect(() => {
-    const lib = L.current;
-    if (!ready || !lib || !routeLayer.current) return;
-    routeLayer.current.clearLayers();
-    if (!target) return;
-    if (!route) {
-      if (me) lib.polyline([[me.lat, me.lng], [target.lat, target.lng]], { color: "#5f6368", weight: 4, dashArray: "2 10", lineCap: "round", opacity: 0.8 }).addTo(routeLayer.current);
-      return;
-    }
-    const idx = progress?.idx ?? 0;
-    const rest = route.coords.slice(idx + 1).map((p) => [p.lat, p.lng] as [number, number]);
-    const start: [number, number] = me ? [me.lat, me.lng] : [route.coords[idx].lat, route.coords[idx].lng];
-    const line = [start, ...rest];
-    if (mode === "foot") {
-      // Google draws walking routes as a row of blue dots
-      lib.polyline(line, { color: "#1967D2", weight: 9, dashArray: "0 14", lineCap: "round", opacity: 1 }).addTo(routeLayer.current);
-      lib.polyline(line, { color: "#4285F4", weight: 6, dashArray: "0 14", lineCap: "round", opacity: 1 }).addTo(routeLayer.current);
-    } else {
-      lib.polyline(line, { color: "#1967D2", weight: 11, lineCap: "round", lineJoin: "round", opacity: 1 }).addTo(routeLayer.current);
-      lib.polyline(line, { color: "#4285F4", weight: 7, lineCap: "round", lineJoin: "round", opacity: 1 }).addTo(routeLayer.current);
-    }
-  }, [ready, route, target, me, progress?.idx, mode]);
+  }, [me]);
 
   function changeMode(m: Mode) {
     setMode(m);
@@ -383,12 +477,26 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
   }
 
   function overview() {
-    const lib = L.current;
-    if (!lib || !map.current || !target) return;
+    const m = map.current;
+    if (!m || !target) return;
     setFollow(false);
-    const pts: [number, number][] = route ? route.coords.map((p) => [p.lat, p.lng]) : [[target.lat, target.lng]];
-    if (me) pts.push([me.lat, me.lng]);
-    map.current.fitBounds(lib.latLngBounds(pts), { padding: [40, 40] });
+    const pts: Pt[] = route ? [...route.coords] : [target];
+    if (me) pts.push(me);
+    const lats = pts.map((p) => p.lat), lngs = pts.map((p) => p.lng);
+    m.fitBounds([[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]], {
+      padding: { top: 140, bottom: 190, left: 40, right: 70 }, bearing: 0, pitch: 0, duration: 700,
+    });
+  }
+
+  function recentre() {
+    setFollow(true);
+    setHeadingUp(true);
+    if (me) map.current?.easeTo({ center: [me.lng, me.lat], zoom: 17, pitch: 45, duration: 500 });
+  }
+
+  function north() {
+    setHeadingUp(false);
+    map.current?.easeTo({ bearing: 0, pitch: 0, duration: 400 });
   }
 
   function reminderText(c: LocateCustomer) {
@@ -398,7 +506,8 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
   // ---------------------------------------------------------------- view
   return (
     <div className={`relative isolate -mx-4 -mt-4 h-[calc(100dvh-8.75rem)] overflow-hidden md:mx-0 md:mt-0 md:h-[calc(100dvh-7rem)] md:rounded-2xl md:border md:border-gray-200 ${target ? "navigating" : ""}`}>
-      <div ref={el} className="absolute inset-0 z-0 bg-gray-100" />
+      {/* MapLibre makes its own box position:relative, so it sits inside a full-size holder */}
+      <div className="absolute inset-0 z-0"><div ref={el} className="h-full w-full bg-gray-100" /></div>
 
       {!target && (
         <div className="absolute inset-x-2 top-2 z-[1000] space-y-1.5">
@@ -483,7 +592,7 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
 
       {/* Buttons on the right */}
       <div className={`absolute right-3 z-[1000] flex flex-col items-end gap-2 ${target ? "bottom-40" : "bottom-4"}`}>
-        <CompassButton map={mapObj} onNorth={() => setHeadingUp(false)} />
+        <CompassButton bearing={mapBearing} onClick={north} />
         {target && (
           <button onClick={overview} className="grid h-12 w-12 place-items-center rounded-full bg-white shadow-lg" aria-label="See whole route" title="See whole route">
             <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M9 4 3 6.5v13.5l6-2.5 6 2.5 6-2.5V4l-6 2.5L9 4zm0 0v13.5m6-11v13.5" fill="none" stroke="#5f6368" strokeWidth="2" strokeLinejoin="round" /></svg>
@@ -491,7 +600,7 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
         )}
         {!target && (
           <button
-            onClick={() => { setFollow(true); if (me) map.current?.flyTo([me.lat, me.lng], Math.max(map.current?.getZoom() ?? 15, 15), { duration: 0.6 }); }}
+            onClick={() => { setFollow(true); if (me) map.current?.flyTo({ center: [me.lng, me.lat], zoom: Math.max(map.current?.getZoom() ?? 15, 15), duration: 600 }); }}
             className="grid h-12 w-12 place-items-center rounded-full bg-white shadow-lg"
             aria-label="Go to my location"
           >
@@ -617,7 +726,7 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
 
           {!follow && !arrived && (
             <button
-              onClick={() => { setFollow(true); setHeadingUp(true); if (me) map.current?.setView([me.lat, me.lng], 17); }}
+              onClick={recentre}
               className="absolute bottom-40 left-3 z-[1000] flex items-center gap-1.5 rounded-full bg-white px-4 py-2.5 text-sm font-semibold text-[#1A73E8] shadow-lg"
             >
               <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 2 20 21 12 16.5 4 21Z" fill="#1A73E8" /></svg>
