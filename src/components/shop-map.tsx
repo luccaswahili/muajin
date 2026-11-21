@@ -1,11 +1,12 @@
 "use client";
 
-import "leaflet/dist/leaflet.css";
+import "maplibre-gl/dist/maplibre-gl.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type * as Leaflet from "leaflet";
-import { addBaseTiles, loadLeaflet, meDotHtml, ROTATE_OPTIONS } from "@/lib/load-leaflet";
+import type { GeoJSONSource, Map as MlMap, Marker } from "maplibre-gl";
+import { MAP_STYLE, flattenBuildings, meDotHtml, teardropHtml } from "@/lib/map-style";
+import { circleRing } from "@/lib/nav";
 import { LocateIcon } from "@/components/locate-icon";
 import { CompassButton } from "@/components/compass-button";
 import { ActionForm, SubmitButton } from "@/components/forms";
@@ -22,23 +23,20 @@ type Point = { lat: number; lng: number };
 
 const DAR: Point = { lat: -6.7924, lng: 39.2083 };
 
-function dot(color: string, size = 18, ring = "#fff") {
-  return `<div style="width:${size}px;height:${size}px;border-radius:9999px;background:${color};border:3px solid ${ring};box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>`;
-}
+const fc = (features: GeoJSON.Feature[]): GeoJSON.FeatureCollection => ({ type: "FeatureCollection", features });
 
 export function ShopMap({ shops, notOnMap, notOnMapCount, canAdd, focusId }: {
   shops: Shop[]; notOnMap: CustomerPick[]; notOnMapCount: number; canAdd: boolean; focusId?: string;
 }) {
   const router = useRouter();
   const el = useRef<HTMLDivElement>(null);
-  const L = useRef<typeof Leaflet | null>(null);
-  const map = useRef<Leaflet.Map | null>(null);
-  const shopLayer = useRef<Leaflet.LayerGroup | null>(null);
-  const meLayer = useRef<Leaflet.LayerGroup | null>(null);
-  const pinMarker = useRef<Leaflet.Marker | null>(null);
+  const ml = useRef<typeof import("maplibre-gl") | null>(null);
+  const map = useRef<MlMap | null>(null);
+  const meMarker = useRef<Marker | null>(null);
+  const pinMarker = useRef<Marker | null>(null);
 
   const [ready, setReady] = useState(false);
-  const [mapObj, setMapObj] = useState<Leaflet.Map | null>(null);
+  const [mapBearing, setMapBearing] = useState(0);
   const [me, setMe] = useState<(Point & { acc: number }) | null>(null);
   const [locating, setLocating] = useState(false);
   const [geoError, setGeoError] = useState("");
@@ -55,26 +53,50 @@ export function ShopMap({ shops, notOnMap, notOnMapCount, canAdd, focusId }: {
     addingRef.current = adding;
   }, [adding]);
 
-  // Create the map once
+  // Create the map once. Vector map drawn by the phone's graphics chip: smooth zoom and turning.
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const lib = await loadLeaflet();
+      const lib = await import("maplibre-gl");
       if (cancelled || !el.current || map.current) return;
-      L.current = lib;
+      ml.current = lib;
       const start = shops.find((s) => s.id === focusId);
-      const m = lib.map(el.current, { zoomControl: false, attributionControl: true, ...ROTATE_OPTIONS }).setView(start ? [start.lat, start.lng] : [DAR.lat, DAR.lng], start ? 17 : 12);
-      addBaseTiles(lib, m);
-      lib.control.zoom({ position: "topright" }).addTo(m);
-      shopLayer.current = lib.layerGroup().addTo(m);
-      meLayer.current = lib.layerGroup().addTo(m);
-      m.on("click", (e: Leaflet.LeafletMouseEvent) => {
-        if (addingRef.current) setPin({ lat: e.latlng.lat, lng: e.latlng.lng });
-        else setSelected(null);
+      const m = new lib.Map({
+        container: el.current,
+        style: MAP_STYLE,
+        center: start ? [start.lng, start.lat] : [DAR.lng, DAR.lat],
+        zoom: start ? 17 : 12,
+        maxPitch: 60,
+        attributionControl: { compact: true },
       });
       map.current = m;
-      setMapObj(m);
-      setReady(true);
+      m.on("load", () => {
+        if (cancelled) return;
+        flattenBuildings(m);
+        m.addSource("acc", { type: "geojson", data: fc([]) });
+        m.addSource("shops", { type: "geojson", data: fc([]) });
+        m.addLayer({ id: "acc-fill", type: "fill", source: "acc", paint: { "fill-color": "#4285F4", "fill-opacity": 0.12 } });
+        m.addLayer({
+          id: "shop-dot", type: "circle", source: "shops",
+          paint: {
+            "circle-color": ["get", "color"],
+            "circle-radius": ["interpolate", ["linear"], ["zoom"], 11, ["case", ["get", "big"], 9, 5.5], 16, ["case", ["get", "big"], 12, 8.5]],
+            "circle-stroke-color": ["case", ["get", "big"], "#111", "#fff"],
+            "circle-stroke-width": ["case", ["get", "big"], 3.5, 2.5],
+          },
+        });
+        setReady(true);
+      });
+      m.on("rotate", () => setMapBearing(m.getBearing()));
+      m.on("click", (e) => {
+        if (addingRef.current) {
+          setPin({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+          return;
+        }
+        const box: [[number, number], [number, number]] = [[e.point.x - 14, e.point.y - 14], [e.point.x + 14, e.point.y + 14]];
+        const hit = m.getLayer("shop-dot") ? m.queryRenderedFeatures(box, { layers: ["shop-dot"] })[0] : undefined;
+        setSelected(hit ? String(hit.properties?.id) : null);
+      });
     })();
     return () => {
       cancelled = true;
@@ -86,39 +108,37 @@ export function ShopMap({ shops, notOnMap, notOnMapCount, canAdd, focusId }: {
 
   const visible = useMemo(() => shops.filter((s) => !hidden.has(s.status)), [shops, hidden]);
 
-  // Shop markers
+  // Shop dots
   useEffect(() => {
-    const lib = L.current;
-    if (!ready || !lib || !shopLayer.current) return;
-    shopLayer.current.clearLayers();
-    for (const s of visible) {
-      const color = SHOP_STATUS[s.status]?.color ?? "#16654a";
-      const big = s.id === selected;
-      lib.marker([s.lat, s.lng], {
-        icon: lib.divIcon({ html: dot(color, big ? 26 : 18, big ? "#111" : "#fff"), className: "", iconSize: [big ? 26 : 18, big ? 26 : 18] }),
-        zIndexOffset: big ? 1000 : 0,
-      })
-        .on("click", () => setSelected(s.id))
-        .addTo(shopLayer.current);
-    }
+    const m = map.current;
+    if (!ready || !m) return;
+    const sorted = [...visible].sort((x, y) => Number(x.id === selected) - Number(y.id === selected));
+    (m.getSource("shops") as GeoJSONSource).setData(fc(sorted.map((s) => ({
+      type: "Feature",
+      properties: { id: s.id, color: SHOP_STATUS[s.status]?.color ?? "#16654a", big: s.id === selected },
+      geometry: { type: "Point", coordinates: [s.lng, s.lat] },
+    }))));
   }, [ready, visible, selected]);
 
   // My position
   useEffect(() => {
-    const lib = L.current;
-    if (!ready || !lib || !meLayer.current) return;
-    meLayer.current.clearLayers();
+    const lib = ml.current;
+    const m = map.current;
+    if (!ready || !lib || !m) return;
+    (m.getSource("acc") as GeoJSONSource).setData(fc(me && me.acc > 5 ? [{ type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [circleRing(me, me.acc)] } }] : []));
     if (!me) return;
-    lib.circle([me.lat, me.lng], { radius: me.acc, color: "#4285F4", weight: 1, opacity: 0.4, fillColor: "#4285F4", fillOpacity: 0.12 }).addTo(meLayer.current);
-    lib.marker([me.lat, me.lng], {
-      icon: lib.divIcon({ html: meDotHtml(null), className: "", iconSize: [22, 22] }),
-      interactive: false,
-    }).addTo(meLayer.current);
+    if (!meMarker.current) {
+      const div = document.createElement("div");
+      div.innerHTML = meDotHtml(false);
+      meMarker.current = new lib.Marker({ element: div }).setLngLat([me.lng, me.lat]).addTo(m);
+    } else {
+      meMarker.current.setLngLat([me.lng, me.lat]);
+    }
   }, [ready, me]);
 
-  // Pin for a new shop
+  // Pin for a new shop (drag it to the exact door)
   useEffect(() => {
-    const lib = L.current;
+    const lib = ml.current;
     const m = map.current;
     if (!ready || !lib || !m) return;
     if (!adding || !pin) {
@@ -127,23 +147,16 @@ export function ShopMap({ shops, notOnMap, notOnMapCount, canAdd, focusId }: {
       return;
     }
     if (!pinMarker.current) {
-      pinMarker.current = lib
-        .marker([pin.lat, pin.lng], {
-          draggable: true,
-          icon: lib.divIcon({
-            html: `<div style="transform:translate(-50%,-100%);font-size:34px;line-height:1">📍</div>`,
-            className: "",
-            iconSize: [0, 0],
-          }),
-          zIndexOffset: 2000,
-        })
-        .on("dragend", (e) => {
-          const p = (e.target as Leaflet.Marker).getLatLng();
-          setPin({ lat: p.lat, lng: p.lng });
-        })
-        .addTo(m);
+      const div = document.createElement("div");
+      div.innerHTML = teardropHtml("#EA4335");
+      const mk = new lib.Marker({ element: div, anchor: "bottom", draggable: true }).setLngLat([pin.lng, pin.lat]).addTo(m);
+      mk.on("dragend", () => {
+        const q = mk.getLngLat();
+        setPin({ lat: q.lat, lng: q.lng });
+      });
+      pinMarker.current = mk;
     } else {
-      pinMarker.current.setLatLng([pin.lat, pin.lng]);
+      pinMarker.current.setLngLat([pin.lng, pin.lat]);
     }
   }, [ready, adding, pin]);
 
@@ -160,7 +173,7 @@ export function ShopMap({ shops, notOnMap, notOnMapCount, canAdd, focusId }: {
           const p = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy };
           setMe(p);
           setLocating(false);
-          map.current?.flyTo([p.lat, p.lng], 17, { duration: 0.8 });
+          map.current?.flyTo({ center: [p.lng, p.lat], zoom: 17, duration: 800 });
           then?.(p);
         },
         (err) => {
@@ -185,7 +198,7 @@ export function ShopMap({ shops, notOnMap, notOnMapCount, canAdd, focusId }: {
       setPin({ lat: p.lat, lng: p.lng });
       // Keep the pin visible above the form sheet
       const m = map.current;
-      m?.once("moveend", () => m.panBy([0, m.getSize().y * 0.3], { animate: true }));
+      m?.once("moveend", () => m.panBy([0, m.getContainer().clientHeight * 0.3]));
     });
   }
 
@@ -222,12 +235,13 @@ export function ShopMap({ shops, notOnMap, notOnMapCount, canAdd, focusId }: {
   function focus(s: Shop) {
     setSelected(s.id);
     setShowList(false);
-    map.current?.flyTo([s.lat, s.lng], 17, { duration: 0.8 });
+    map.current?.flyTo({ center: [s.lng, s.lat], zoom: 17, duration: 800 });
   }
 
   return (
     <div className="relative isolate -mx-4 -mt-4 h-[calc(100dvh-8.75rem)] overflow-hidden md:mx-0 md:mt-0 md:h-[calc(100dvh-7rem)] md:rounded-2xl md:border md:border-gray-200">
-      <div ref={el} className="absolute inset-0 z-0 bg-gray-100" />
+      {/* MapLibre makes its own box position:relative, so it sits inside a full-size holder */}
+      <div className="absolute inset-0 z-0"><div ref={el} className="h-full w-full bg-gray-100" /></div>
 
       {/* Top bar */}
       <div className="absolute inset-x-2 top-2 z-[1000] flex flex-wrap gap-1.5">
@@ -245,7 +259,7 @@ export function ShopMap({ shops, notOnMap, notOnMapCount, canAdd, focusId }: {
 
       {/* Right buttons */}
       <div className="absolute bottom-4 right-3 z-[1000] flex flex-col items-end gap-2">
-        <CompassButton map={mapObj} />
+        <CompassButton bearing={mapBearing} onClick={() => map.current?.easeTo({ bearing: 0, pitch: 0, duration: 400 })} />
         <Link href="/map/locate" className="flex h-12 flex-col items-center justify-center rounded-full bg-red-600 px-3 text-white shadow-lg" aria-label="Locate customers and follow up on money owed">
           <span className="text-lg leading-none">🎯</span>
           <span className="text-[10px] font-semibold leading-tight">Locate</span>
