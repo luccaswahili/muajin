@@ -4,11 +4,13 @@ import "leaflet/dist/leaflet.css";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type * as Leaflet from "leaflet";
-import { loadLeaflet, ROTATE_OPTIONS } from "@/lib/load-leaflet";
+import { addBaseTiles, loadLeaflet, meDotHtml, navArrowHtml, ROTATE_OPTIONS, teardropHtml } from "@/lib/load-leaflet";
+import { TurnIcon } from "@/components/turn-icon";
+import { LocateIcon } from "@/components/locate-icon";
 import { CompassButton } from "@/components/compass-button";
 import { fmtDate, tzs } from "@/lib/format";
 import { withRef } from "@/lib/shops";
-import { fetchRoute, fmtMeters, fmtMinutes, meters, snap, waNumber, type Mode, type Pt, type Route } from "@/lib/nav";
+import { ahead, arrivalTime, bearing, fetchRoute, fmtMeters, fmtMinutes, meters, snap, waNumber, type Mode, type Pt, type Route } from "@/lib/nav";
 
 export type LocateCustomer = {
   id: string; name: string; contact_name: string | null; phone: string | null; area: string | null;
@@ -18,7 +20,7 @@ export type LocateCustomer = {
   last_payment: string | null;
 };
 
-type Me = Pt & { acc: number };
+type Me = Pt & { acc: number; heading: number | null };
 type Sort = "near" | "big" | "old";
 
 const DAR: Pt = { lat: -6.7924, lng: 39.2083 };
@@ -30,7 +32,8 @@ const daysSince = (d: string | null, today: string) =>
   d ? Math.max(0, Math.round((new Date(today + "T12:00:00Z").getTime() - new Date(d + "T12:00:00Z").getTime()) / 86_400_000)) : null;
 
 function pin(owes: boolean, label: string, big: boolean) {
-  const bg = owes ? "#dc2626" : "#16654a";
+  if (big) return `<div style="position:relative;width:28px;height:40px">${teardropHtml(owes ? "#EA4335" : "#188038")}${owes && label ? `<div style="position:absolute;left:30px;top:2px;white-space:nowrap;background:#fff;color:#a50e0e;font:600 12px/1.4 system-ui;padding:1px 6px;border-radius:9999px;box-shadow:0 1px 3px rgba(0,0,0,.35)">${label}</div>` : ""}</div>`;
+  const bg = owes ? "#EA4335" : "#188038";
   const size = big ? 22 : 16;
   const tag = owes && label
     ? `<div style="position:absolute;left:${size + 2}px;top:-2px;white-space:nowrap;background:#fff;color:#991b1b;font:600 11px/1.4 system-ui;padding:0 5px;border-radius:9999px;box-shadow:0 1px 3px rgba(0,0,0,.35)">${label}</div>`
@@ -68,6 +71,8 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
   const [routeError, setRouteError] = useState("");
   const [follow, setFollow] = useState(true);
   const [arrived, setArrived] = useState(false);
+  const [headingUp, setHeadingUp] = useState(true);
+  const [mapBearing, setMapBearing] = useState(0);
   const lastRoute = useRef<{ at: number; from: Pt } | null>(null);
   const routeAbort = useRef<AbortController | null>(null);
   const wakeLock = useRef<{ release: () => Promise<void> } | null>(null);
@@ -88,15 +93,13 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
       if (cancelled || !el.current || map.current) return;
       L.current = lib;
       const m = lib.map(el.current, { zoomControl: false, ...ROTATE_OPTIONS }).setView([DAR.lat, DAR.lng], 12);
-      lib.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-      }).addTo(m);
+      addBaseTiles(lib, m);
       lib.control.zoom({ position: "topright" }).addTo(m);
       routeLayer.current = lib.layerGroup().addTo(m);
       shopLayer.current = lib.layerGroup().addTo(m);
       meLayer.current = lib.layerGroup().addTo(m);
       m.on("dragstart", () => setFollow(false));
+      m.on("rotate", () => setMapBearing(m.getBearing()));
       m.on("click", () => setSelected(null));
       map.current = m;
       setMapObj(m);
@@ -118,7 +121,9 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
     let first = true;
     const id = navigator.geolocation.watchPosition(
       (pos) => {
-        const p = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy };
+        const h = pos.coords.heading;
+        const moving = (pos.coords.speed ?? 0) > 0.6;
+        const p = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy, heading: h !== null && !Number.isNaN(h) && moving ? h : null };
         setMe(p);
         setGeoError("");
         const tg = targetRef.current;
@@ -187,7 +192,9 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
     for (const c of show) {
       const big = c.id === selected || c.id === target?.id;
       lib.marker([c.lat, c.lng], {
-        icon: lib.divIcon({ html: pin(c.owes, c.owes ? short(Number(c.balance)) : "", big), className: "", iconSize: [big ? 22 : 16, big ? 22 : 16] }),
+        icon: big
+          ? lib.divIcon({ html: pin(c.owes, c.owes ? short(Number(c.balance)) : "", true), className: "", iconSize: [28, 40], iconAnchor: [14, 40] })
+          : lib.divIcon({ html: pin(c.owes, c.owes ? short(Number(c.balance)) : "", false), className: "", iconSize: [16, 16] }),
         zIndexOffset: big ? 1000 : c.owes ? 500 : 0,
       })
         .on("click", () => {
@@ -196,23 +203,6 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
         .addTo(shopLayer.current);
     }
   }, [ready, visible, selected, target]);
-
-  // Me, radius circle
-  useEffect(() => {
-    const lib = L.current;
-    if (!ready || !lib || !meLayer.current) return;
-    meLayer.current.clearLayers();
-    if (!me) return;
-    if (radius && !target) {
-      lib.circle([me.lat, me.lng], { radius: radius * 1000, color: "#16654a", weight: 1.5, dashArray: "6 6", fillOpacity: 0.04, interactive: false }).addTo(meLayer.current);
-    }
-    lib.circle([me.lat, me.lng], { radius: me.acc, color: "#2563eb", weight: 1, fillOpacity: 0.1, interactive: false }).addTo(meLayer.current);
-    lib.marker([me.lat, me.lng], {
-      icon: lib.divIcon({ html: `<div style="width:18px;height:18px;border-radius:9999px;background:#2563eb;border:3px solid #fff;box-shadow:0 0 0 6px rgba(37,99,235,.25)"></div>`, className: "", iconSize: [18, 18] }),
-      interactive: false,
-      zIndexOffset: 2000,
-    }).addTo(meLayer.current);
-  }, [ready, me, radius, target]);
 
   // Fit the radius on screen when it changes
   useEffect(() => {
@@ -258,6 +248,7 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
     setArrived(false);
     setRoute(null);
     setFollow(true);
+    setHeadingUp(true);
     try {
       const nav = navigator as Navigator & { wakeLock?: { request: (t: "screen") => Promise<{ release: () => Promise<void> }> } };
       wakeLock.current = (await nav.wakeLock?.request("screen")) ?? null;
@@ -279,6 +270,7 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
     wakeLock.current?.release().catch(() => {});
     wakeLock.current = null;
     routeLayer.current?.clearLayers();
+    map.current?.setBearing(0);
   }
 
   // Release the screen lock when leaving the page
@@ -290,25 +282,66 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
   const progress = useMemo(() => {
     if (!target || !me) return null;
     const straight = meters(me, target);
-    if (!route) return { left: straight, secs: null as number | null, off: 0, idx: 0, next: null as null | { text: string; in: number }, straight };
+    const toTarget = bearing(me, target);
+    type Next = { text: string; in: number; type: string; modifier: string };
+    if (!route) return { left: straight, secs: null as number | null, off: 0, idx: 0, next: null as Next | null, then: null as Next | null, straight, dir: me.heading ?? toTarget };
     const s = snap(route, me);
     const left = Math.max(0, route.distance - s.along) + (s.off > 30 ? s.off : 0);
     const speed = route.duration > 0 ? route.distance / route.duration : 1.3;
-    const nextStep = route.steps.find((st) => st.idx > s.idx && route.cum[st.idx] > s.along + 5);
+    const k = route.steps.findIndex((st) => st.idx > s.idx && route.cum[st.idx] > s.along + 5);
+    const nextStep = k >= 0 ? route.steps[k] : undefined;
+    const thenStep = k >= 0 ? route.steps[k + 1] : undefined;
+    // Which way I am going: along the road when I am on it, else my compass, else straight at the shop
+    const a = route.coords[s.idx], b = route.coords[Math.min(s.idx + 1, route.coords.length - 1)];
+    const dir = s.off < 30 && meters(a, b) > 1 ? bearing(a, b) : me.heading ?? toTarget;
     return {
       left,
       secs: left / speed,
       off: s.off,
       idx: s.idx,
-      next: nextStep ? { text: nextStep.text, in: route.cum[nextStep.idx] - s.along } : null,
+      next: nextStep ? { text: nextStep.text, in: route.cum[nextStep.idx] - s.along, type: nextStep.type, modifier: nextStep.modifier } : null,
+      then: thenStep ? { text: thenStep.text, in: route.cum[thenStep.idx] - s.along, type: thenStep.type, modifier: thenStep.modifier } : null,
       straight,
+      dir,
     };
   }, [target, me, route]);
+  const navDir = progress ? Math.round(progress.dir) : null;
+
+  // Me, radius circle
+  useEffect(() => {
+    const lib = L.current;
+    if (!ready || !lib || !meLayer.current) return;
+    meLayer.current.clearLayers();
+    if (!me) return;
+    if (radius && !target) {
+      lib.circle([me.lat, me.lng], { radius: radius * 1000, color: "#16654a", weight: 1.5, dashArray: "6 6", fillOpacity: 0.04, interactive: false }).addTo(meLayer.current);
+    }
+    if (!target) lib.circle([me.lat, me.lng], { radius: me.acc, color: "#4285F4", weight: 1, opacity: 0.4, fillColor: "#4285F4", fillOpacity: 0.12, interactive: false }).addTo(meLayer.current);
+    // Marker icons stay upright when the map turns, so add the map's turn to my heading
+    const icon = target
+      ? lib.divIcon({ html: navArrowHtml((navDir ?? 0) + mapBearing), className: "", iconSize: [44, 44] })
+      : lib.divIcon({ html: meDotHtml(me.heading === null ? null : me.heading + mapBearing), className: "", iconSize: [22, 22] });
+    lib.marker([me.lat, me.lng], { icon, interactive: false, zIndexOffset: 2000 }).addTo(meLayer.current);
+  }, [ready, me, radius, target, navDir, mapBearing]);
+
 
   // Arrive, re-route when off the path, follow me
   useEffect(() => {
     if (!target || !me || !progress) return;
-    if (followRef.current) map.current?.panTo([me.lat, me.lng], { animate: true });
+    const m = map.current;
+    if (followRef.current && m) {
+      if (headingUp) {
+        // Like Google Maps: the way I am going points up, and I sit low on the screen so I see what is ahead
+        const want = (360 - progress.dir) % 360;
+        const diff = Math.abs(((m.getBearing() - want + 540) % 360) - 180);
+        if (diff > 6) m.setBearing(want);
+        const mpp = (40075016.686 * Math.cos((me.lat * Math.PI) / 180)) / 2 ** (m.getZoom() + 8);
+        const c = ahead(me, progress.dir, m.getSize().y * 0.2 * mpp);
+        m.panTo([c.lat, c.lng], { animate: true });
+      } else {
+        m.panTo([me.lat, me.lng], { animate: true });
+      }
+    }
     if (arrived || routing) return;
     const last = lastRoute.current;
     const since = last ? Date.now() - last.at : Infinity;
@@ -318,7 +351,7 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
       loadRoute(me, target, mode);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [me]);
+  }, [me, route, headingUp]);
 
   // Draw the route still ahead of me
   useEffect(() => {
@@ -327,15 +360,22 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
     routeLayer.current.clearLayers();
     if (!target) return;
     if (!route) {
-      if (me) lib.polyline([[me.lat, me.lng], [target.lat, target.lng]], { color: "#2563eb", weight: 4, dashArray: "8 8", opacity: 0.7 }).addTo(routeLayer.current);
+      if (me) lib.polyline([[me.lat, me.lng], [target.lat, target.lng]], { color: "#5f6368", weight: 4, dashArray: "2 10", lineCap: "round", opacity: 0.8 }).addTo(routeLayer.current);
       return;
     }
     const idx = progress?.idx ?? 0;
-    const ahead = route.coords.slice(idx + 1).map((p) => [p.lat, p.lng] as [number, number]);
+    const rest = route.coords.slice(idx + 1).map((p) => [p.lat, p.lng] as [number, number]);
     const start: [number, number] = me ? [me.lat, me.lng] : [route.coords[idx].lat, route.coords[idx].lng];
-    lib.polyline([start, ...ahead], { color: "#1d4ed8", weight: 9, opacity: 0.25 }).addTo(routeLayer.current);
-    lib.polyline([start, ...ahead], { color: "#2563eb", weight: 5, opacity: 0.95 }).addTo(routeLayer.current);
-  }, [ready, route, target, me, progress?.idx]);
+    const line = [start, ...rest];
+    if (mode === "foot") {
+      // Google draws walking routes as a row of blue dots
+      lib.polyline(line, { color: "#1967D2", weight: 9, dashArray: "0 14", lineCap: "round", opacity: 1 }).addTo(routeLayer.current);
+      lib.polyline(line, { color: "#4285F4", weight: 6, dashArray: "0 14", lineCap: "round", opacity: 1 }).addTo(routeLayer.current);
+    } else {
+      lib.polyline(line, { color: "#1967D2", weight: 11, lineCap: "round", lineJoin: "round", opacity: 1 }).addTo(routeLayer.current);
+      lib.polyline(line, { color: "#4285F4", weight: 7, lineCap: "round", lineJoin: "round", opacity: 1 }).addTo(routeLayer.current);
+    }
+  }, [ready, route, target, me, progress?.idx, mode]);
 
   function changeMode(m: Mode) {
     setMode(m);
@@ -357,7 +397,7 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
 
   // ---------------------------------------------------------------- view
   return (
-    <div className="relative isolate -mx-4 -mt-4 h-[calc(100dvh-8.75rem)] overflow-hidden md:mx-0 md:mt-0 md:h-[calc(100dvh-7rem)] md:rounded-2xl md:border md:border-gray-200">
+    <div className={`relative isolate -mx-4 -mt-4 h-[calc(100dvh-8.75rem)] overflow-hidden md:mx-0 md:mt-0 md:h-[calc(100dvh-7rem)] md:rounded-2xl md:border md:border-gray-200 ${target ? "navigating" : ""}`}>
       <div ref={el} className="absolute inset-0 z-0 bg-gray-100" />
 
       {!target && (
@@ -442,18 +482,22 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
       )}
 
       {/* Buttons on the right */}
-      <div className="absolute bottom-4 right-3 z-[1000] flex flex-col items-end gap-2">
-        <CompassButton map={mapObj} />
+      <div className={`absolute right-3 z-[1000] flex flex-col items-end gap-2 ${target ? "bottom-40" : "bottom-4"}`}>
+        <CompassButton map={mapObj} onNorth={() => setHeadingUp(false)} />
         {target && (
-          <button onClick={overview} className="grid h-12 w-12 place-items-center rounded-full bg-white text-lg shadow-lg" aria-label="See whole route">🗺️</button>
+          <button onClick={overview} className="grid h-12 w-12 place-items-center rounded-full bg-white shadow-lg" aria-label="See whole route" title="See whole route">
+            <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M9 4 3 6.5v13.5l6-2.5 6 2.5 6-2.5V4l-6 2.5L9 4zm0 0v13.5m6-11v13.5" fill="none" stroke="#5f6368" strokeWidth="2" strokeLinejoin="round" /></svg>
+          </button>
         )}
-        <button
-          onClick={() => { setFollow(true); if (me) map.current?.flyTo([me.lat, me.lng], target ? 17 : Math.max(map.current?.getZoom() ?? 15, 15), { duration: 0.6 }); }}
-          className={`grid h-12 w-12 place-items-center rounded-full text-xl shadow-lg ${follow && target ? "bg-blue-600 text-white" : "bg-white"}`}
-          aria-label="Go to my location"
-        >
-          ◎
-        </button>
+        {!target && (
+          <button
+            onClick={() => { setFollow(true); if (me) map.current?.flyTo([me.lat, me.lng], Math.max(map.current?.getZoom() ?? 15, 15), { duration: 0.6 }); }}
+            className="grid h-12 w-12 place-items-center rounded-full bg-white shadow-lg"
+            aria-label="Go to my location"
+          >
+            <LocateIcon active={!!me} />
+          </button>
+        )}
       </div>
 
       {!target && !sel && !showList && (
@@ -538,48 +582,86 @@ export function LocateMap({ customers, isAgent, today, unlocatedDebtors }: {
         </div>
       )}
 
-      {/* Navigating */}
+      {/* Navigating, styled like Google Maps */}
       {target && (
         <>
-          <div className="absolute inset-x-2 top-2 z-[1000] rounded-2xl bg-brand-700 p-3 text-white shadow-xl">
-            {arrived ? (
-              <div className="text-lg font-bold">You have arrived 🎉</div>
-            ) : progress?.next ? (
-              <>
-                <div className="text-2xl font-bold tabular-nums">{fmtMeters(progress.next.in)}</div>
-                <div className="text-sm leading-snug">{progress.next.text}</div>
-              </>
-            ) : (
-              <div className="text-sm">{routing ? "Finding the best way…" : `Head to ${target.name}`}</div>
+          <div className="absolute inset-x-2 top-2 z-[1000] overflow-hidden rounded-2xl text-white shadow-xl">
+            <div className="flex items-center gap-3 bg-[#137333] px-3 py-3">
+              {arrived ? (
+                <>
+                  <TurnIcon type="arrive" modifier="" />
+                  <div className="text-xl font-bold">You have arrived</div>
+                </>
+              ) : progress?.next ? (
+                <>
+                  <TurnIcon type={progress.next.type} modifier={progress.next.modifier} size={44} />
+                  <div className="min-w-0">
+                    <div className="text-2xl font-bold leading-tight tabular-nums">{fmtMeters(progress.next.in)}</div>
+                    <div className="truncate text-base font-medium leading-snug">{progress.next.text}</div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <TurnIcon type="depart" modifier="straight" />
+                  <div className="text-base font-medium">{routing ? "Finding the best way…" : `Head to ${target.name}`}</div>
+                </>
+              )}
+            </div>
+            {!arrived && progress?.then && progress.next && progress.then.in - progress.next.in < 250 && (
+              <div className="inline-flex items-center gap-1.5 rounded-br-2xl bg-[#0d652d] px-3 py-1.5 text-sm font-medium">
+                Then <TurnIcon type={progress.then.type} modifier={progress.then.modifier} size={20} />
+              </div>
             )}
-            {routeError && <div className="mt-1 text-xs text-amber-200">{routeError}</div>}
+            {routeError && <div className="bg-[#0d652d] px-3 py-1.5 text-xs text-amber-100">{routeError}</div>}
           </div>
 
-          <div className="absolute inset-x-0 bottom-0 z-[1001] rounded-t-2xl bg-white p-4 pr-20 shadow-2xl">
-            <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <div className="truncate font-semibold">{withRef(target.name, target.contact_name)}</div>
-                <div className="text-sm">
-                  <b className="tabular-nums">{progress ? fmtMeters(progress.left) : "…"}</b>
-                  {progress?.secs != null && !arrived && <span className="text-gray-500"> · {fmtMinutes(progress.secs)}</span>}
-                  {Number(target.balance) > 0 && <span className="ml-1 font-semibold text-red-700">· owes {tzs(target.balance)}</span>}
-                </div>
-              </div>
-            </div>
+          {!follow && !arrived && (
+            <button
+              onClick={() => { setFollow(true); setHeadingUp(true); if (me) map.current?.setView([me.lat, me.lng], 17); }}
+              className="absolute bottom-40 left-3 z-[1000] flex items-center gap-1.5 rounded-full bg-white px-4 py-2.5 text-sm font-semibold text-[#1A73E8] shadow-lg"
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 2 20 21 12 16.5 4 21Z" fill="#1A73E8" /></svg>
+              Re-centre
+            </button>
+          )}
+
+          <div className="absolute inset-x-0 bottom-0 z-[1001] rounded-t-3xl bg-white px-4 pb-4 pt-2 shadow-[0_-4px_20px_rgba(0,0,0,.15)]">
+            <div className="mx-auto mb-2 h-1 w-9 rounded-full bg-gray-300" />
             {arrived ? (
-              <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs font-medium">
-                <Link href={`/customers/${target.id}`} className="rounded-xl bg-brand-600 p-2 text-white">💵<br />Payment</Link>
-                <Link href={`/sales/new?customer=${target.id}`} className="rounded-xl bg-brand-50 p-2 text-brand-700">🛒<br />Sell</Link>
-                <button onClick={stop} className="rounded-xl bg-gray-100 p-2 text-gray-700">✓<br />Done</button>
-              </div>
-            ) : (
-              <div className="mt-3 flex gap-2">
-                <div className="flex overflow-hidden rounded-xl border border-gray-200 text-sm">
-                  <button onClick={() => changeMode("foot")} className={`px-3 py-2 ${mode === "foot" ? "bg-brand-600 text-white" : ""}`}>🚶 Walk</button>
-                  <button onClick={() => changeMode("car")} className={`px-3 py-2 ${mode === "car" ? "bg-brand-600 text-white" : ""}`}>🛵 Ride</button>
+              <>
+                <div className="truncate text-center font-semibold">{withRef(target.name, target.contact_name)}</div>
+                {Number(target.balance) > 0 && <div className="text-center text-sm font-semibold text-red-700">Owes {tzs(target.balance)}</div>}
+                <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs font-medium">
+                  <Link href={`/customers/${target.id}`} className="rounded-xl bg-brand-600 p-2 text-white">💵<br />Payment</Link>
+                  <Link href={`/sales/new?customer=${target.id}`} className="rounded-xl bg-brand-50 p-2 text-brand-700">🛒<br />Sell</Link>
+                  <button onClick={stop} className="rounded-xl bg-gray-100 p-2 text-gray-700">✓<br />Done</button>
                 </div>
-                <button onClick={stop} className="btn-secondary flex-1 !text-red-700">End</button>
-              </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-3">
+                  <button onClick={stop} className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-gray-300 text-[#d93025]" aria-label="End navigation">
+                    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" /></svg>
+                  </button>
+                  <div className="min-w-0 flex-1 text-center">
+                    <div className="text-2xl font-bold leading-tight text-[#188038] tabular-nums">
+                      {progress?.secs != null ? fmtMinutes(progress.secs) : routing ? "…" : fmtMeters(progress?.left ?? 0)}
+                    </div>
+                    <div className="text-sm text-gray-600 tabular-nums">
+                      {progress ? fmtMeters(progress.left) : "…"}
+                      {progress?.secs != null && <> · {arrivalTime(progress.secs)}</>}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-col overflow-hidden rounded-full border border-gray-300 text-lg">
+                    <button onClick={() => changeMode("foot")} className={`px-3 py-0.5 ${mode === "foot" ? "bg-[#e8f0fe]" : ""}`} aria-label="Walk">🚶</button>
+                    <button onClick={() => changeMode("car")} className={`px-3 py-0.5 ${mode === "car" ? "bg-[#e8f0fe]" : ""}`} aria-label="Ride">🛵</button>
+                  </div>
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-2 border-t border-gray-100 pt-2 text-sm">
+                  <span className="min-w-0 truncate text-gray-700">To <b>{withRef(target.name, target.contact_name)}</b></span>
+                  {Number(target.balance) > 0 && <span className="shrink-0 font-semibold text-red-700">owes {tzs(target.balance)}</span>}
+                </div>
+              </>
             )}
           </div>
         </>

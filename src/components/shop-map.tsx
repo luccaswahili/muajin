@@ -5,7 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type * as Leaflet from "leaflet";
-import { loadLeaflet, ROTATE_OPTIONS } from "@/lib/load-leaflet";
+import { addBaseTiles, loadLeaflet, meDotHtml, ROTATE_OPTIONS } from "@/lib/load-leaflet";
+import { LocateIcon } from "@/components/locate-icon";
 import { CompassButton } from "@/components/compass-button";
 import { ActionForm, SubmitButton } from "@/components/forms";
 import { pinCustomer, saveCustomer, searchCustomers } from "@/app/actions";
@@ -63,10 +64,7 @@ export function ShopMap({ shops, notOnMap, notOnMapCount, canAdd, focusId }: {
       L.current = lib;
       const start = shops.find((s) => s.id === focusId);
       const m = lib.map(el.current, { zoomControl: false, attributionControl: true, ...ROTATE_OPTIONS }).setView(start ? [start.lat, start.lng] : [DAR.lat, DAR.lng], start ? 17 : 12);
-      lib.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-      }).addTo(m);
+      addBaseTiles(lib, m);
       lib.control.zoom({ position: "topright" }).addTo(m);
       shopLayer.current = lib.layerGroup().addTo(m);
       meLayer.current = lib.layerGroup().addTo(m);
@@ -111,9 +109,9 @@ export function ShopMap({ shops, notOnMap, notOnMapCount, canAdd, focusId }: {
     if (!ready || !lib || !meLayer.current) return;
     meLayer.current.clearLayers();
     if (!me) return;
-    lib.circle([me.lat, me.lng], { radius: me.acc, color: "#2563eb", weight: 1, fillOpacity: 0.1 }).addTo(meLayer.current);
+    lib.circle([me.lat, me.lng], { radius: me.acc, color: "#4285F4", weight: 1, opacity: 0.4, fillColor: "#4285F4", fillOpacity: 0.12 }).addTo(meLayer.current);
     lib.marker([me.lat, me.lng], {
-      icon: lib.divIcon({ html: dot("#2563eb", 18), className: "", iconSize: [18, 18] }),
+      icon: lib.divIcon({ html: meDotHtml(null), className: "", iconSize: [22, 22] }),
       interactive: false,
     }).addTo(meLayer.current);
   }, [ready, me]);
@@ -253,7 +251,7 @@ export function ShopMap({ shops, notOnMap, notOnMapCount, canAdd, focusId }: {
           <span className="text-[10px] font-semibold leading-tight">Locate</span>
         </Link>
         <button onClick={() => locate()} className="grid h-12 w-12 place-items-center rounded-full bg-white text-xl shadow-lg" aria-label="Go to my location">
-          {locating ? "…" : "◎"}
+          {locating ? "…" : <LocateIcon active={!!me} />}
         </button>
       </div>
 
