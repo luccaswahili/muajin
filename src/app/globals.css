@@ -61,3 +61,11 @@ body {
   .skeleton::after { animation: none; }
 }
 }
+
+/* Map tiles: softer colours, closer to the Google Maps look */
+.map-tiles {
+  filter: saturate(0.55) brightness(1.06) contrast(0.92);
+}
+.navigating .leaflet-control-zoom {
+  display: none;
+}

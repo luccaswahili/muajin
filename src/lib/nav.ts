@@ -1,6 +1,6 @@
 /** Small helpers for live navigation on the Locate map. Points are { lat, lng }. */
 export type Pt = { lat: number; lng: number };
-export type Step = { text: string; name: string; at: Pt; idx: number };
+export type Step = { text: string; name: string; at: Pt; idx: number; type: string; modifier: string };
 export type Route = { coords: Pt[]; cum: number[]; distance: number; duration: number; steps: Step[] };
 export type Mode = "foot" | "car";
 
@@ -13,6 +13,22 @@ export function meters(a: Pt, b: Pt) {
   const dLng = rad(b.lng - a.lng);
   const x = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(x));
+}
+
+/** Compass direction from a to b, in degrees (0 = north, 90 = east). */
+export function bearing(a: Pt, b: Pt) {
+  const y = Math.sin(rad(b.lng - a.lng)) * Math.cos(rad(b.lat));
+  const x = Math.cos(rad(a.lat)) * Math.sin(rad(b.lat)) - Math.sin(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.cos(rad(b.lng - a.lng));
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+/** The point d metres from p in compass direction deg. */
+export function ahead(p: Pt, deg: number, d: number): Pt {
+  const k = d / R;
+  const t = rad(deg);
+  const lat = Math.asin(Math.sin(rad(p.lat)) * Math.cos(k) + Math.cos(rad(p.lat)) * Math.sin(k) * Math.cos(t));
+  const lng = rad(p.lng) + Math.atan2(Math.sin(t) * Math.sin(k) * Math.cos(rad(p.lat)), Math.cos(k) - Math.sin(rad(p.lat)) * Math.sin(lat));
+  return { lat: (lat * 180) / Math.PI, lng: (lng * 180) / Math.PI };
 }
 
 /** Closest point on the route to p: which segment, how far along the route, how far off it. */
@@ -69,7 +85,7 @@ export async function fetchRoute(from: Pt, to: Pt, mode: Mode, signal?: AbortSig
   for (const leg of r.legs ?? []) {
     for (const s of leg.steps ?? []) {
       const at = { lat: s.maneuver.location[1], lng: s.maneuver.location[0] };
-      route.steps.push({ text: instruction(s.maneuver, s.name), name: s.name, at, idx: snap(route, at).idx });
+      route.steps.push({ text: instruction(s.maneuver, s.name), name: s.name, at, idx: snap(route, at).idx, type: s.maneuver.type, modifier: s.maneuver.modifier ?? "" });
     }
   }
   return route;
@@ -78,6 +94,11 @@ export async function fetchRoute(from: Pt, to: Pt, mode: Mode, signal?: AbortSig
 export function fmtMeters(m: number) {
   if (m < 1000) return `${Math.max(0, Math.round(m / 10) * 10)} m`;
   return `${(m / 1000).toFixed(m < 10000 ? 1 : 0)} km`;
+}
+
+/** Clock time after sec seconds from now, like 10:34 AM. */
+export function arrivalTime(sec: number) {
+  return new Date(Date.now() + sec * 1000).toLocaleTimeString("en-GB", { hour: "numeric", minute: "2-digit", hour12: true }).toUpperCase();
 }
 
 export function fmtMinutes(sec: number) {
